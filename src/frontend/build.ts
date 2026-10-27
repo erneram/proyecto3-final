@@ -151,12 +151,31 @@ function typeAnn(ctx: P.TypeAnnContext | null): A.TypeRef | undefined {
 // ---------- Expresiones ----------
 
 function expr(ctx: P.ExprContext): A.Expr {
-  if (ctx instanceof P.CondExprContext && !ctx.QUESTION()) return binary(ctx.binary());
+  if (ctx instanceof P.AssignExprContext) {
+    return { kind: "assign", target: target(ctx.target()), value: expr(ctx.expr()), pos: at(ctx) };
+  }
+  if (ctx instanceof P.CondExprContext) {
+    const cond = binary(ctx.binary());
+    const question = ctx.QUESTION();
+    if (!question) return cond;
+    const [then, otherwise] = ctx.expr().map(expr);
+    return { kind: "ternary", cond, then, otherwise, pos: posOf(question.symbol) };
+  }
   return unsupported(ctx);
 }
 
+/** Los operadores se ubican en su propio token: ahí apunta cualquier error de tipos. */
 function binary(ctx: P.BinaryContext): A.Expr {
   if (ctx instanceof P.AtomContext) return primary(ctx.primary());
+  if (ctx instanceof P.PrefixContext) {
+    const op = ctx._op!;
+    return { kind: "unary", op: op.text as "-" | "!", operand: binary(ctx.binary()), pos: posOf(op) };
+  }
+  if (ctx instanceof P.InfixContext) {
+    const op = ctx._op!;
+    const [left, right] = ctx.binary().map(binary);
+    return { kind: "binary", op: op.text as A.BinaryOp, left, right, pos: posOf(op) };
+  }
   return unsupported(ctx);
 }
 
@@ -167,13 +186,28 @@ function primary(ctx: P.PrimaryContext): A.Expr {
   return unsupported(ctx);
 }
 
+/** `a.b(1)[2]`: los sufijos se aplican de izquierda a derecha sobre la cabeza. */
 function target(ctx: P.TargetContext): A.Expr {
-  if (ctx.suffix().length > 0) return unsupported(ctx);
-  const head = ctx.head();
-  if (head instanceof P.NameHeadContext) return { kind: "name", name: text(head.ID()), pos: at(head) };
-  if (head instanceof P.ThisHeadContext) return { kind: "this", pos: at(head) };
-  return unsupported(head);
+  let node = head(ctx.head());
+  for (const s of ctx.suffix()) {
+    const pos = at(s);
+    if (s instanceof P.CallSuffixContext) node = { kind: "call", callee: node, args: args(s.argList()), pos };
+    else if (s instanceof P.IndexSuffixContext) node = { kind: "index", object: node, index: expr(s.expr()), pos };
+    else if (s instanceof P.MemberSuffixContext) node = { kind: "member", object: node, name: text(s.ID()), pos };
+    else return unsupported(s);
+  }
+  return node;
 }
+
+function head(ctx: P.HeadContext): A.Expr {
+  const pos = at(ctx);
+  if (ctx instanceof P.NameHeadContext) return { kind: "name", name: text(ctx.ID()), pos };
+  if (ctx instanceof P.ThisHeadContext) return { kind: "this", pos };
+  if (ctx instanceof P.NewHeadContext) return { kind: "new", className: text(ctx.ID()), args: args(ctx.argList()), pos };
+  return unsupported(ctx);
+}
+
+const args = (ctx: P.ArgListContext | null): A.Expr[] => (ctx?.expr() ?? []).map(expr);
 
 const ESCAPES: Record<string, string> = { n: "\n", r: "\r", t: "\t", '"': '"', "\\": "\\" };
 
@@ -189,5 +223,6 @@ function literal(ctx: P.LiteralContext): A.Expr {
   if (ctx.TRUE()) return { kind: "bool", value: true, pos };
   if (ctx.FALSE()) return { kind: "bool", value: false, pos };
   if (ctx.NULL()) return { kind: "null", pos };
+  if (ctx.LBRACKET()) return { kind: "array", items: ctx.expr().map(expr), pos };
   return unsupported(ctx);
 }
