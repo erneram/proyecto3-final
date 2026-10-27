@@ -163,11 +163,16 @@ RBRACKET  : ']' ;
 FLOAT_LIT  : DIGIT+ '.' DIGIT+ ;
 INT_LIT    : DIGIT+ ;
 STRING_LIT : '"' (ESCAPE | ~["\\\r\n])* '"' ;
+// Cadena mal formada (sin cierre o con escape inválido); el driver la reporta.
+BAD_STRING : '"' ('\\' ~[\r\n] | ~["\\\r\n])* '"'? ;
 ID         : [a-zA-Z_] [a-zA-Z0-9_]* ;
 
 WS            : [ \t\r\n]+ -> skip ;
 LINE_COMMENT  : '//' ~[\r\n]* -> skip ;
 BLOCK_COMMENT : '/*' .*? '*/' -> skip ;
+
+// Cualquier otro carácter; el driver lo convierte en error léxico.
+ERROR_CHAR : . ;
 
 fragment DIGIT  : [0-9] ;
 fragment ESCAPE : '\\' ["\\nrt] ;
