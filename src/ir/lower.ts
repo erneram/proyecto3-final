@@ -1,14 +1,14 @@
 import type { CheckResult } from "../check/checker.js";
 import type { Sym } from "../check/scope.js";
-import { isNumeric, type Type } from "../check/types.js";
-import type { BinaryOp as AstBinaryOp, Expr, ExprOf, Program, Stmt, StmtOf } from "../frontend/ast.js";
+import { isNumeric, UNKNOWN, VOID, type Type } from "../check/types.js";
+import type { BinaryOp as AstBinaryOp, Expr, ExprOf, FuncDecl, Program, Stmt, StmtOf } from "../frontend/ast.js";
 import { hops, planStorage, type Frame, type Place, type StoragePlan } from "./frames.js";
 import type { BinaryOp, IntOp, IrFunction, IrModule, Operand, PrintFormat, Quad, ValueClass } from "./ir.js";
 
 /** Traduce el AST ya verificado a código de tres direcciones. */
 export function lower(program: Program, checked: CheckResult): IrModule {
   const builder = new ModuleBuilder(checked, planStorage(checked));
-  const main = new FunctionLowerer(builder, builder.plan.main);
+  const main = new FunctionLowerer(builder, builder.plan.main, VOID);
   main.stmts(program.body);
   builder.finish(main);
   return builder.module;
@@ -72,7 +72,25 @@ class FunctionLowerer {
   constructor(
     readonly m: ModuleBuilder,
     readonly frame: Frame,
+    /** Tipo de retorno de la función; los `return` se convierten a él. */
+    readonly ret: Type,
   ) {}
+
+  /** Crea el entorno propio, lo enlaza al recibido y copia ahí los parámetros capturados. */
+  prologue(): void {
+    const { envOwn, envIn, envWords, scope } = this.frame;
+    if (envOwn === undefined) return;
+    const env = this.temp("word");
+    this.emit({ op: "alloc", dst: env, words: envWords });
+    this.emit({ op: "store", base: env, offset: 0, a: envIn === undefined ? { k: "int", value: 0 } : { k: "slot", index: envIn } });
+    this.emit({ op: "mov", dst: { k: "slot", index: envOwn }, a: env });
+    [...scope.symbols.values()]
+      .filter((sym) => sym.kind === "parameter")
+      .forEach((sym, i) => {
+        const place = this.placeOf(sym);
+        if (place.at === "env") this.emit({ op: "store", base: env, offset: place.offset, a: { k: "slot", index: i } });
+      });
+  }
 
   emit(q: Quad): void {
     this.quads.push(q);
@@ -101,7 +119,29 @@ class FunctionLowerer {
   // ---------- Sentencias ----------
 
   stmts(list: Stmt[]): void {
+    // Las funciones anidadas se elevan: su clausura existe desde el inicio de la lista.
+    for (const s of list) {
+      if (s.kind !== "func") continue;
+      const sym = this.symOf(s);
+      if (this.placeOf(sym).at === "label") continue;
+      const closure = this.temp("word");
+      this.emit({ op: "closure", dst: closure, fn: this.frameOf(s).label, env: this.currentEnv() });
+      this.write(sym, closure);
+    }
     for (const s of list) this.stmt(s);
+  }
+
+  frameOf(f: FuncDecl): Frame {
+    return this.m.plan.frames.get(this.m.checked.scopes.get(f)!)!;
+  }
+
+  /** Genera el cuerpo de `f` como una `IrFunction` aparte. */
+  func(f: FuncDecl): void {
+    const type = this.symOf(f).type;
+    const inner = new FunctionLowerer(this.m, this.frameOf(f), type.tag === "fn" ? type.ret : UNKNOWN);
+    inner.prologue();
+    inner.stmts(f.body);
+    this.m.finish(inner);
   }
 
   stmt(s: Stmt): void {
@@ -172,6 +212,12 @@ class FunctionLowerer {
       }
       case "switch":
         this.switch(s);
+        return;
+      case "func":
+        this.func(s);
+        return;
+      case "return":
+        this.emit(s.value ? { op: "ret", a: this.coerced(s.value, this.ret) } : { op: "ret" });
         return;
       case "break":
       case "continue": {
@@ -261,12 +307,17 @@ class FunctionLowerer {
 
   // ---------- Variables ----------
 
+  /** Entorno que ve esta función: el propio, el recibido o ninguno (0). */
+  currentEnv(): Operand {
+    const own = this.frame.envOwn ?? this.frame.envIn;
+    return own === undefined ? { k: "int", value: 0 } : { k: "slot", index: own };
+  }
+
   /** Puntero al entorno de `owner`, siguiendo la cadena de enlaces desde el entorno actual. */
   envOf(owner: Frame): Operand {
     const n = hops(this.frame, owner) ?? 0;
-    const own = this.frame.envOwn ?? this.frame.envIn;
-    if (own === undefined) throw new Error(`${this.frame.name} no tiene entorno`);
-    let base: Operand = { k: "slot", index: own };
+    let base = this.currentEnv();
+    if (base.k !== "slot") throw new Error(`${this.frame.name} no tiene entorno`);
     for (let i = 0; i < n; i++) {
       const next = this.temp("word");
       this.emit({ op: "load", dst: next, base, offset: 0 });
@@ -336,6 +387,8 @@ class FunctionLowerer {
         return this.read(this.symOf(e));
       case "assign":
         return this.assign(e);
+      case "call":
+        return this.call(e);
       case "unary": {
         const a = this.expr(e.operand);
         const float = isFloat(this.typeOf(e.operand));
@@ -361,6 +414,28 @@ class FunctionLowerer {
       default:
         throw new Error(`Generación de código pendiente para '${e.kind}'`);
     }
+  }
+
+  /**
+   * Las funciones globales se llaman directo por etiqueta; cualquier otro valor
+   * función es una clausura y se llama a través de ella. Los argumentos se
+   * evalúan todos antes de apilar el primero, así una llamada anidada no se mezcla.
+   */
+  call(e: ExprOf<"call">): Operand {
+    if (e.callee.kind === "member") throw new Error("Generación de código pendiente para llamadas a métodos");
+    const sym = e.callee.kind === "name" ? this.symOf(e.callee) : undefined;
+    const place = sym && this.placeOf(sym);
+    // El símbolo de una función tiene el retorno ya inferido; el tipo de la expresión puede ser anterior.
+    const type = sym?.kind === "function" ? sym.type : this.typeOf(e.callee);
+    const params = type.tag === "fn" ? type.params : [];
+    const ret = type.tag === "fn" ? type.ret : UNKNOWN;
+    const target = place?.at === "label" ? place.label : this.expr(e.callee);
+    const args = e.args.map((a, i) => this.coerced(a, params[i] ?? this.typeOf(a)));
+    for (const a of args) this.emit({ op: "param", a });
+    const dst = ret.tag === "void" ? undefined : this.temp(classOfType(ret));
+    if (typeof target === "string") this.emit({ op: "call", dst, fn: target, argc: args.length });
+    else this.emit({ op: "callc", dst, closure: target, argc: args.length });
+    return dst ?? { k: "int", value: 0 };
   }
 
   assign(e: ExprOf<"assign">): Operand {

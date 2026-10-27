@@ -160,3 +160,72 @@ describe("generación: control de flujo", () => {
     assert.ok(mainBody("let x = 2.5; switch (x) { case 1: print(1); }").includes("t1 = t0 ==. 1.0"));
   });
 });
+
+/** Cuerpo de la función `name` (nombre legible, p. ej. `contador.sig`). */
+function fnBody(src: string, name: string): string[] {
+  const r = compile(src, "check");
+  assert.ok(r.ok && r.program && r.checked, JSON.stringify(r.diagnostics));
+  const m = lower(r.program, r.checked);
+  const fn = m.functions.find((f) => f.name === name);
+  assert.ok(fn, `sin función ${name}`);
+  return printFunction(fn, m).split("\n").slice(1, -1).map((l) => l.trim());
+}
+
+describe("generación: funciones y clausuras", () => {
+  it("las funciones globales se llaman por etiqueta y la recursión también", () => {
+    const src = "function fact(n: integer): integer { if (n <= 1) { return 1; } return n * fact(n - 1); } print(fact(5));";
+    assert.deepEqual(fnBody(src, "fact").slice(-5), ["t1 = n - 1", "param t1", "t2 = call f_fact, 1", "t3 = n * t2", "return t3"]);
+    assert.deepEqual(mainBody(src), ["param 5", "t0 = call f_fact, 1", "print.int t0", "return"]);
+  });
+
+  it("una llamada anidada apila sus argumentos antes que la exterior y promueve a float", () => {
+    const src = "function f(a: float, b: float): float { return a + b; } let n = 2; print(f(n, f(n, n)));";
+    assert.deepEqual(mainBody(src).slice(1, 10), [
+      "t0 = (float) @n",
+      "t1 = (float) @n",
+      "t2 = (float) @n",
+      "param t1",
+      "param t2",
+      "t3 = call f_f, 2",
+      "param t0",
+      "param t3",
+      "t4 = call f_f, 2",
+    ]);
+    assert.deepEqual(fnBody("function f(): float { return 3; } print(f());", "f"), ["return 3.0"]);
+  });
+
+  it("las variables capturadas viven en el entorno y la clausura se crea al inicio del bloque", () => {
+    const src =
+      "function contador(): integer { let c = 0; function sig(): integer { c = c + 1; return c; } sig(); return sig(); } print(contador());";
+    assert.deepEqual(fnBody(src, "contador"), [
+      "t0 = alloc 2",
+      "t0[0] = 0",
+      "$env = t0",
+      "t1 = closure f_contador_sig, $env",
+      "sig = t1",
+      "$env[4] = 0",
+      "t2 = callc sig, 0",
+      "t3 = callc sig, 0",
+      "return t3",
+    ]);
+    assert.deepEqual(fnBody(src, "contador.sig"), [
+      "t0 = $env_in[4]",
+      "t1 = t0 + 1",
+      "$env_in[4] = t1",
+      "t2 = $env_in[4]",
+      "return t2",
+    ]);
+  });
+
+  it("los parámetros capturados se copian al entorno y la función devuelta se llama como clausura", () => {
+    const src = "function suma(x: integer) { function por(y: integer): integer { return x + y; } return por; } let g = suma(4); print(g(5));";
+    assert.ok(fnBody(src, "suma").includes("t0[4] = x"));
+    assert.deepEqual(mainBody(src).slice(3, 6), ["param 5", "t1 = callc @g, 1", "print.int t1"]);
+  });
+
+  it("una función anidada sin capturas propias reenvía el entorno recibido", () => {
+    const src =
+      "function afuera() { let n = 5; function a() { function b(): integer { return n; } return b(); } return a(); } print(afuera());";
+    assert.deepEqual(fnBody(src, "afuera.a"), ["t0 = closure f_afuera_a_b, $env_in", "b = t0", "t1 = callc b, 0", "return t1"]);
+  });
+});

@@ -18,7 +18,7 @@ describe("ubicación de símbolos", () => {
     assert.deepEqual(place("x"), { at: "global", index: 0 });
     assert.deepEqual(place("y"), { at: "global", index: 1 });
     assert.deepEqual(p.globals, [{ name: "x", cls: "word" }, { name: "y", cls: "float" }]);
-    assert.deepEqual(place("f"), { at: "label", label: "f_f_2" });
+    assert.deepEqual(place("f"), { at: "label", label: "f_f" });
   });
 
   it("locales en la pila después de los parámetros; capturadas en el entorno propio", () => {

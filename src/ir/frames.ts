@@ -77,6 +77,8 @@ export function planStorage(checked: CheckResult): StoragePlan {
   const frames = new Map<Scope, Frame>([[table.root, main]]);
   const places = new Map<Sym, Place>();
   const globals: SlotInfo[] = [];
+  // Etiqueta de cada función, por su símbolo (declarado en el ámbito que la contiene).
+  const fnLabels = new Map<Sym, string>();
 
   // Marcos de funciones y métodos, en orden de aparición (los padres primero).
   for (const scope of table.scopes) {
@@ -86,6 +88,8 @@ export function planStorage(checked: CheckResult): StoragePlan {
     const name = [parent?.name, cls, scope.name].filter(Boolean).join(".");
     const label = unique(`${cls ? "m" : "f"}_${name}`);
     frames.set(scope, { scope, label, name, parent, slots: [], params: 0, envWords: 1 });
+    const fnSym = scope.kind === "function" ? scope.parent?.symbols.get(scope.name) : undefined;
+    if (fnSym?.kind === "function") fnLabels.set(fnSym, label);
   }
 
   // Parámetros (incluido `this`) primero, luego los enlaces de entorno.
@@ -104,7 +108,7 @@ export function planStorage(checked: CheckResult): StoragePlan {
     if (sym.kind === "class") {
       places.set(sym, { at: "none" });
     } else if (!owner) {
-      if (sym.kind === "function") places.set(sym, { at: "label", label: unique(`f_${sym.name}`) });
+      if (sym.kind === "function") places.set(sym, { at: "label", label: fnLabels.get(sym)! });
       else places.set(sym, { at: "global", index: globals.push({ name: sym.name, cls: valueClass(sym) }) - 1 });
     } else {
       const frame = frames.get(owner)!;
