@@ -60,3 +60,59 @@ describe("checker: declaraciones y nombres", () => {
     assert.equal(byName.get("g")!.captured, false);
   });
 });
+
+describe("checker: expresiones", () => {
+  const typeOf = (src: string): string => {
+    const r = analyze(`let v = ${src};`);
+    assert.deepEqual(r.diagnostics, [], src);
+    const sym = r.table.symbols.find((s) => s.name === "v")!;
+    return sym.type.tag === "array" ? `${sym.type.elem.tag}[]` : sym.type.tag;
+  };
+
+  it("infiere tipos aritméticos con promoción a float", () => {
+    assert.equal(typeOf("1 + 2 * 3"), "int");
+    assert.equal(typeOf("1 + 2.5"), "float");
+    assert.equal(typeOf("-4.0"), "float");
+    assert.equal(typeOf("7 % 2"), "int");
+    assert.equal(typeOf('"a" + "b"'), "string");
+  });
+
+  it("rechaza operandos inválidos", () => {
+    assert.deepEqual(codes("let x = 5.5 % 2;"), ["E205"]);
+    assert.deepEqual(codes('let x = "a" + 1;'), ["E205"]);
+    assert.deepEqual(codes('let x = "a" < "b";'), ["E205"]);
+    assert.deepEqual(codes("let x = 1 && true;"), ["E205"]);
+    assert.deepEqual(codes('let x = !"no";'), ["E206"]);
+    assert.deepEqual(codes("let x = -true;"), ["E206"]);
+  });
+
+  it("comparaciones y lógica producen boolean", () => {
+    assert.equal(typeOf("1 < 2.0 && !(3 == 4) || null == null"), "bool");
+    assert.deepEqual(codes('let x = 1 == "1";'), ["E205"]);
+  });
+
+  it("arreglos: tipo común, índices enteros y valores indexables", () => {
+    assert.equal(typeOf("[1, 2.5]"), "float[]");
+    assert.deepEqual(codes("let m = [[1], [2]]; let fila: integer[] = m[0];"), []);
+    assert.deepEqual(codes('let a = [1, "dos"];'), ["E212"]);
+    assert.deepEqual(codes("let a = [1, 2]; print(a[1.5]);"), ["E209"]);
+    assert.deepEqual(codes("let n = 3; print(n[0]);"), ["E210"]);
+    assert.deepEqual(codes("let a: integer[] = [1]; a[0] = true;"), ["E202"]);
+    assert.deepEqual(codes("let a: float[] = [1, 2];"), []);
+  });
+
+  it("ternario: condición booleana y ramas compatibles", () => {
+    assert.equal(typeOf("true ? 2 : 3.5"), "float");
+    assert.deepEqual(codes("let x = 1 ? 2 : 3;"), ["E207"]);
+    assert.deepEqual(codes('let x = true ? 1 : "uno";'), ["E208"]);
+  });
+
+  it("foreach exige un arreglo y tipa la variable con su elemento", () => {
+    assert.deepEqual(codes("foreach (n in [1, 2]) { let m: integer = n; }"), []);
+    assert.deepEqual(codes("foreach (n in 5) { }"), ["E211"]);
+  });
+
+  it("no permite asignar a llamadas, objetos nuevos ni a this", () => {
+    assert.deepEqual(codes("function f(): integer { return 1; } f() = 2;"), ["E204"]);
+  });
+});

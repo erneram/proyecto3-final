@@ -4,9 +4,10 @@ import type { Block, Expr, FuncDecl, Pos, Program, Stmt, TypeRef } from "../fron
 import { CODES, severityOf, type CodeArgs, type CodeKey } from "./codes.js";
 import { crossesFunction, SymbolTable, type Scope, type ScopeKind, type Sym } from "./scope.js";
 import {
-  arrayOf, assignable, BOOL, ERROR, FLOAT, fnType, instanceOf, INT, NULL, primitiveByName, STRING,
-  typeName, UNKNOWN, type ClassInfo, type Type,
+  arrayOf, assignable, BOOL, commonType, comparable, ERROR, FLOAT, fnType, instanceOf, INT, isAbsorbing,
+  isNumeric, NULL, numericResult, primitiveByName, STRING, typeName, UNKNOWN, type ClassInfo, type Type,
 } from "./types.js";
+import type { BinaryOp } from "../frontend/ast.js";
 
 export interface CheckResult {
   diagnostics: Diagnostic[];
@@ -153,9 +154,15 @@ class Checker implements CheckResult {
         return;
       }
       case "foreach": {
-        this.expr(s.iterable, scope);
+        const iterable = this.expr(s.iterable, scope);
+        let elem = UNKNOWN;
+        if (iterable.tag === "array") elem = iterable.elem;
+        else if (!isAbsorbing(iterable)) {
+          this.report("notIterable", s.iterable.pos, typeName(iterable));
+          elem = ERROR;
+        }
         const loop = this.open(s, "loop", "foreach", scope);
-        this.declare(loop, { name: s.name, kind: "variable", type: UNKNOWN, pos: s.pos }, s);
+        this.declare(loop, { name: s.name, kind: "variable", type: elem, pos: s.pos }, s);
         this.block(s.body, loop);
         return;
       }
@@ -233,6 +240,35 @@ class Checker implements CheckResult {
         return this.use(e, scope, true)?.type ?? ERROR;
       case "assign":
         return this.assign(e, scope);
+      case "array":
+        return this.arrayLiteral(e, scope);
+      case "index": {
+        const object = this.expr(e.object, scope);
+        const index = this.expr(e.index, scope);
+        if (!isAbsorbing(index) && index.tag !== "int") this.report("indexType", e.index.pos, typeName(index));
+        if (object.tag === "array") return object.elem;
+        if (isAbsorbing(object)) return UNKNOWN;
+        this.report("notIndexable", e.pos, typeName(object));
+        return ERROR;
+      }
+      case "unary": {
+        const operand = this.expr(e.operand, scope);
+        const ok = e.op === "!" ? operand.tag === "bool" : isNumeric(operand);
+        if (ok || isAbsorbing(operand)) return e.op === "!" ? BOOL : operand;
+        this.report("badOperand", e.pos, e.op, typeName(operand));
+        return e.op === "!" ? BOOL : ERROR;
+      }
+      case "binary":
+        return this.binary(e.op, this.expr(e.left, scope), this.expr(e.right, scope), e.pos);
+      case "ternary": {
+        this.condition(e.cond, scope, "el operador ternario");
+        const a = this.expr(e.then, scope);
+        const b = this.expr(e.otherwise, scope);
+        const common = commonType(a, b);
+        if (common) return common;
+        this.report("ternaryMismatch", e.pos, typeName(a), typeName(b));
+        return ERROR;
+      }
       default:
         for (const child of children(e)) this.expr(child, scope);
         return UNKNOWN;
@@ -259,7 +295,10 @@ class Checker implements CheckResult {
   assign(e: Extract<Expr, { kind: "assign" }>, scope: Scope): Type {
     const value = this.expr(e.value, scope);
     if (e.target.kind !== "name") {
-      this.expr(e.target, scope);
+      const target = this.expr(e.target, scope);
+      const invalid = INVALID_TARGET[e.target.kind];
+      if (invalid) this.report("invalidTarget", e.target.pos, invalid);
+      else if (!assignable(target, value)) this.report("badAssign", e.target.pos, typeName(target), typeName(value));
       return value;
     }
     const sym = this.use(e.target, scope, false);
@@ -272,6 +311,70 @@ class Checker implements CheckResult {
     }
     sym.initialized = true;
     return value;
+  }
+
+  /** Evalúa una condición y exige que sea boolean. */
+  condition(e: Expr, scope: Scope, where: string): void {
+    const t = this.expr(e, scope);
+    if (t.tag !== "bool" && !isAbsorbing(t)) this.report("notBoolean", e.pos, where, typeName(t));
+  }
+
+  arrayLiteral(e: Extract<Expr, { kind: "array" }>, scope: Scope): Type {
+    let elem: Type = UNKNOWN;
+    let mixed = false;
+    for (const item of e.items) {
+      const t = this.expr(item, scope);
+      const common = commonType(elem, t);
+      if (common) elem = common;
+      else if (!mixed) {
+        mixed = true;
+        this.report("mixedArray", item.pos, typeName(elem), typeName(t));
+      }
+    }
+    return arrayOf(mixed ? ERROR : elem);
+  }
+
+  binary(op: BinaryOp, left: Type, right: Type, pos: Pos): Type {
+    const result = binaryResult(op, left, right);
+    if (result) return result;
+    this.report("badOperands", pos, op, typeName(left), typeName(right));
+    return BOOLEAN_OPS.has(op) ? BOOL : ERROR;
+  }
+}
+
+const INVALID_TARGET: Partial<Record<Expr["kind"], string>> = {
+  call: "el resultado de una llamada",
+  new: "un objeto recién creado",
+  this: "'this'",
+};
+
+const BOOLEAN_OPS = new Set<BinaryOp>(["<", "<=", ">", ">=", "==", "!=", "&&", "||"]);
+
+/** Tipo resultante de un operador binario, o `undefined` si los operandos no sirven. */
+function binaryResult(op: BinaryOp, left: Type, right: Type): Type | undefined {
+  if (isAbsorbing(left) || isAbsorbing(right)) return BOOLEAN_OPS.has(op) ? BOOL : UNKNOWN;
+  const numeric = isNumeric(left) && isNumeric(right);
+  switch (op) {
+    case "+":
+      if (left.tag === "string" && right.tag === "string") return STRING;
+      return numeric ? numericResult(left, right) : undefined;
+    case "-":
+    case "*":
+    case "/":
+      return numeric ? numericResult(left, right) : undefined;
+    case "%":
+      return left.tag === "int" && right.tag === "int" ? INT : undefined;
+    case "<":
+    case "<=":
+    case ">":
+    case ">=":
+      return numeric ? BOOL : undefined;
+    case "==":
+    case "!=":
+      return comparable(left, right) ? BOOL : undefined;
+    case "&&":
+    case "||":
+      return left.tag === "bool" && right.tag === "bool" ? BOOL : undefined;
   }
 }
 
