@@ -10,7 +10,8 @@
   "scripts": {
     "gen": "antlr-ng -Dlanguage=TypeScript --generate-visitor --generate-listener false -o src/frontend/gen grammar/Compis.g4",
     "prepare": "npm run gen",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "compis": "tsx src/cli.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
