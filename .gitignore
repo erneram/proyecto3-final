@@ -1,0 +1,6 @@
+node_modules/
+dist/
+src/frontend/gen/
+tools/*.jar
+*.asm
+.DS_Store
