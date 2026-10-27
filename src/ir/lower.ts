@@ -108,12 +108,16 @@ const FLOAT_OPS: Partial<Record<AstBinaryOp, BinaryOp>> = {
 interface JumpTargets {
   breakTo: string;
   continueTo?: string;
+  /** Manejadores activos al entrar: los que se activen dentro se desactivan al salir por un salto. */
+  handlers: number;
 }
 
 class FunctionLowerer {
   readonly quads: Quad[] = [];
   readonly temps: ValueClass[] = [];
   readonly #targets: JumpTargets[] = [];
+  /** `try` activos en este punto de la función. */
+  #handlers = 0;
 
   constructor(
     readonly m: ModuleBuilder,
@@ -266,24 +270,56 @@ class FunctionLowerer {
         for (const method of s.methods) this.func(method, cls.members.get(method.name)!.type);
         return;
       }
-      case "return":
-        this.emit(s.value ? { op: "ret", a: this.coerced(s.value, this.ret) } : { op: "ret" });
+      case "return": {
+        const value = s.value && this.coerced(s.value, this.ret);
+        this.leaveHandlers(0);
+        this.emit(value ? { op: "ret", a: value } : { op: "ret" });
+        return;
+      }
+      case "try":
+        this.try(s);
         return;
       case "break":
       case "continue": {
-        const target =
-          s.kind === "break" ? this.#targets.at(-1)?.breakTo : [...this.#targets].reverse().find((t) => t.continueTo)?.continueTo;
-        if (!target) throw new Error(`'${s.kind}' fuera de un bucle`);
+        const targets = s.kind === "break" ? this.#targets.at(-1) : [...this.#targets].reverse().find((t) => t.continueTo);
+        const target = s.kind === "break" ? targets?.breakTo : targets?.continueTo;
+        if (!targets || !target) throw new Error(`'${s.kind}' fuera de un bucle`);
+        this.leaveHandlers(targets.handlers);
         this.emit({ op: "goto", target });
         return;
       }
-      default:
-        throw new Error(`Generación de código pendiente para '${s.kind}'`);
     }
   }
 
+  /** Desactiva los manejadores activados después de que había `depth`. */
+  leaveHandlers(depth: number): void {
+    for (let i = this.#handlers; i > depth; i--) this.emit({ op: "endtry" });
+  }
+
+  /**
+   * Mientras corre el cuerpo hay un manejador activo; un error en tiempo de
+   * ejecución (aquí o en cualquier función llamada) lo desactiva y salta a `catch`
+   * con el mensaje del error.
+   */
+  try(s: StmtOf<"try">): void {
+    const handler = this.m.label();
+    const end = this.m.label();
+    this.emit({ op: "try", handler });
+    this.#handlers++;
+    this.stmts(s.body.body);
+    this.#handlers--;
+    this.emit({ op: "endtry" });
+    this.emit({ op: "goto", target: end });
+    this.emit({ op: "label", name: handler });
+    const message = this.temp("word");
+    this.emit({ op: "caught", dst: message });
+    this.write(this.symOf(s), message);
+    this.stmts(s.handler.body);
+    this.emit({ op: "label", name: end });
+  }
+
   loopBody(body: Stmt[], breakTo: string, continueTo?: string): void {
-    this.#targets.push({ breakTo, continueTo });
+    this.#targets.push({ breakTo, continueTo, handlers: this.#handlers });
     this.stmts(body);
     this.#targets.pop();
   }
@@ -330,7 +366,7 @@ class FunctionLowerer {
     });
     const fallback = s.fallback ? this.m.label() : end;
     this.emit({ op: "goto", target: fallback });
-    this.#targets.push({ breakTo: end });
+    this.#targets.push({ breakTo: end, handlers: this.#handlers });
     s.cases.forEach((c, i) => {
       this.emit({ op: "label", name: bodies[i]! });
       this.stmts(c.body);

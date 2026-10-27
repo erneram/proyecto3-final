@@ -331,3 +331,32 @@ describe("generación: clases y objetos", () => {
     assert.deepEqual(fnBody(src, "f.C.inc").slice(0, 3), ["t0 = $env_in[4]", "t1 = t0 + 1", "$env_in[4] = t1"]);
   });
 });
+
+describe("generación: try/catch", () => {
+  it("el cuerpo corre con un manejador activo y catch recibe el mensaje", () => {
+    assert.deepEqual(mainBody('let a = [1]; try { print(a[5]); } catch (e) { print(e); } print("fin");').slice(3), [
+      "try L0",
+      "t1 = @a{5}",
+      "print.int t1",
+      "endtry",
+      "goto L1",
+      "L0:",
+      "t2 = caught",
+      "@e = t2",
+      "print.string @e",
+      "L1:",
+      'print.string "fin"',
+      "return",
+    ]);
+  });
+
+  it("break, continue y return desactivan los manejadores que dejan atrás", () => {
+    const src =
+      "function f(): integer { let i = 0; while (i < 3) { try { try { if (i == 1) { break; } return i; } catch (e) { continue; } } catch (x) { print(x); } i = i + 1; } return -1; } print(f());";
+    const body = fnBody(src, "f");
+    const after = (line: string, n: number): string[] => body.slice(body.indexOf(line) + 1, body.indexOf(line) + 1 + n);
+    assert.deepEqual(after("ifnot t1 goto L6", 3), ["endtry", "endtry", "goto L1"]);
+    assert.deepEqual(after("L6:", 3), ["endtry", "endtry", "return i"]);
+    assert.deepEqual(after("e = t2", 2), ["endtry", "goto L0"]);
+  });
+});
