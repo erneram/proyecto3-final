@@ -229,3 +229,50 @@ describe("generación: funciones y clausuras", () => {
     assert.deepEqual(fnBody(src, "afuera.a"), ["t0 = closure f_afuera_a_b, $env_in", "b = t0", "t1 = callc b, 0", "return t1"]);
   });
 });
+
+describe("generación: arreglos", () => {
+  it("los literales y las asignaciones por índice convierten al tipo del elemento", () => {
+    assert.deepEqual(mainBody("let a: float[] = [1, 2.5]; a[0] = 3; print(a[1]);"), [
+      "t0 = newarray 2",
+      "t0{0} = 1.0",
+      "t0{1} = 2.5",
+      "@a = t0",
+      "@a{0} = 3.0",
+      "t1 = @a{1}",
+      "print.float t1",
+      "return",
+    ]);
+  });
+
+  it("en una asignación por índice se evalúa primero el destino y luego el valor", () => {
+    assert.deepEqual(mainBody("let m = [[1, 2], [3]]; m[1][0] = m[0][1];").slice(9, 13), [
+      "t3 = @m{1}",
+      "t4 = @m{0}",
+      "t5 = t4{1}",
+      "t3{0} = t5",
+    ]);
+  });
+
+  it("foreach recorre con un índice y continue salta al incremento", () => {
+    assert.deepEqual(mainBody("let xs = [1.5, 2.5]; foreach (x in xs) { if (x > 2) { continue; } print(x); }").slice(4), [
+      "t1 = @xs",
+      "t2 = length t1",
+      "t3 = 0",
+      "L0:",
+      "t4 = t3 < t2",
+      "ifnot t4 goto L2",
+      "t5 = t1{t3}",
+      "@x = t5",
+      "t6 = @x >. 2.0",
+      "ifnot t6 goto L3",
+      "goto L1",
+      "L3:",
+      "print.float @x",
+      "L1:",
+      "t3 = t3 + 1",
+      "goto L0",
+      "L2:",
+      "return",
+    ]);
+  });
+});

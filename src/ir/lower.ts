@@ -213,6 +213,9 @@ class FunctionLowerer {
       case "switch":
         this.switch(s);
         return;
+      case "foreach":
+        this.foreach(s);
+        return;
       case "func":
         this.func(s);
         return;
@@ -236,6 +239,32 @@ class FunctionLowerer {
     this.#targets.push({ breakTo, continueTo });
     this.stmts(body);
     this.#targets.pop();
+  }
+
+  /** El arreglo se evalúa una sola vez; `alen` falla si es null y `aget` verifica límites. */
+  foreach(s: StmtOf<"foreach">): void {
+    const array = this.temp("word");
+    const length = this.temp("word");
+    const i = this.temp("word");
+    this.emit({ op: "mov", dst: array, a: this.expr(s.iterable) });
+    this.emit({ op: "alen", dst: length, array });
+    this.emit({ op: "mov", dst: i, a: { k: "int", value: 0 } });
+    const top = this.m.label();
+    const step = this.m.label();
+    const end = this.m.label();
+    this.emit({ op: "label", name: top });
+    const more = this.temp("word");
+    this.emit({ op: "lt", dst: more, a: i, b: length });
+    this.emit({ op: "ifnot", a: more, target: end });
+    const item = this.symOf(s);
+    const value = this.temp(classOfType(item.type));
+    this.emit({ op: "aget", dst: value, array, index: i });
+    this.write(item, value);
+    this.loopBody(s.body.body, end, step);
+    this.emit({ op: "label", name: step });
+    this.emit({ op: "add", dst: i, a: i, b: { k: "int", value: 1 } });
+    this.emit({ op: "goto", target: top });
+    this.emit({ op: "label", name: end });
   }
 
   /**
@@ -389,6 +418,23 @@ class FunctionLowerer {
         return this.assign(e);
       case "call":
         return this.call(e);
+      case "array": {
+        const t = this.typeOf(e);
+        const elem = t.tag === "array" ? t.elem : UNKNOWN;
+        const dst = this.temp("word");
+        this.emit({ op: "newarr", dst, length: { k: "int", value: e.items.length } });
+        e.items.forEach((item, i) => {
+          this.emit({ op: "aset", array: dst, index: { k: "int", value: i }, a: this.coerced(item, elem) });
+        });
+        return dst;
+      }
+      case "index": {
+        const array = this.expr(e.object);
+        const index = this.expr(e.index);
+        const dst = this.temp(classOfType(this.typeOf(e)));
+        this.emit({ op: "aget", dst, array, index });
+        return dst;
+      }
       case "unary": {
         const a = this.expr(e.operand);
         const float = isFloat(this.typeOf(e.operand));
@@ -439,6 +485,13 @@ class FunctionLowerer {
   }
 
   assign(e: ExprOf<"assign">): Operand {
+    if (e.target.kind === "index") {
+      const array = this.expr(e.target.object);
+      const index = this.expr(e.target.index);
+      const value = this.coerced(e.value, this.typeOf(e.target));
+      this.emit({ op: "aset", array, index, a: value });
+      return value;
+    }
     if (e.target.kind !== "name") throw new Error(`Generación de código pendiente para asignar a '${e.target.kind}'`);
     const sym = this.symOf(e.target);
     const value = this.coerced(e.value, sym.type);
