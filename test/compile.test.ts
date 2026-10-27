@@ -6,8 +6,14 @@ describe("compile", () => {
   it("un programa válido atraviesa todas las etapas", () => {
     const r = compile("let x: integer = 2; print(x * 3);");
     assert.equal(r.ok, true);
-    assert.ok(r.program && r.checked);
+    assert.ok(r.program && r.checked && r.ir);
     assert.equal(r.stopped, undefined);
+  });
+
+  it("los errores semánticos detienen la generación de código intermedio", () => {
+    const r = compile("print(nada);");
+    assert.equal(r.ir, undefined);
+    assert.equal(r.stopped?.stage, "ir");
   });
 
   it("los errores sintácticos detienen la semántica y dicen por qué", () => {

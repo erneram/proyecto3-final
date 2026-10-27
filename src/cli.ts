@@ -5,6 +5,8 @@ import { typeName } from "./check/types.js";
 import type { Diagnostic } from "./diagnostic.js";
 import { compile } from "./compile.js";
 import { outline, renderOutline } from "./frontend/outline.js";
+import { printCfg } from "./ir/cfg.js";
+import { printModule } from "./ir/print.js";
 
 const USAGE = `Uso: compis <comando> <archivo.cps>
 
@@ -12,8 +14,10 @@ Comandos:
   tokens   Lista los tokens reconocidos
   tree     Muestra el árbol sintáctico abstracto
   check    Valida la semántica y muestra la tabla de símbolos
+  tac      Muestra el código de tres direcciones
 
 Opciones:
+  --cfg        Con tac: agrupa cada función en bloques básicos
   -h, --help   Muestra esta ayuda`;
 
 const PHASE_LABEL: Record<Diagnostic["phase"], string> = {
@@ -32,7 +36,11 @@ export function formatDiagnostic(file: string, d: Diagnostic): string {
 
 class UsageError extends Error {}
 
-type Command = (file: string, source: string) => number;
+interface Options {
+  cfg?: boolean;
+}
+
+type Command = (file: string, source: string, options: Options) => number;
 
 function report(file: string, diagnostics: Diagnostic[]): void {
   for (const d of diagnostics) console.error(formatDiagnostic(file, d));
@@ -83,6 +91,17 @@ const commands: Record<string, Command> = {
     report(file, diagnostics);
     return ok ? 0 : 1;
   },
+
+  tac(file, source, options) {
+    const { ir, diagnostics, stopped } = compile(source, "ir");
+    report(file, diagnostics);
+    if (!ir) {
+      if (stopped) console.error(`nota: ${stopped.reason}`);
+      return 1;
+    }
+    console.log(options.cfg ? ir.functions.map((fn) => printCfg(fn, ir)).join("\n\n") : printModule(ir));
+    return 0;
+  },
 };
 
 function printTable(header: string[], rows: string[][]): void {
@@ -96,7 +115,7 @@ function printTable(header: string[], rows: string[][]): void {
 function main(argv: string[]): number {
   let parsed;
   try {
-    parsed = parseArgs({ args: argv, allowPositionals: true, options: { help: { type: "boolean", short: "h" } } });
+    parsed = parseArgs({ args: argv, allowPositionals: true, options: { help: { type: "boolean", short: "h" }, cfg: { type: "boolean" } } });
   } catch (e) {
     const option = /'([^']+)'/.exec((e as Error).message)?.[1];
     throw new UsageError(option ? `Opción desconocida: ${option}.` : "Argumentos inválidos.");
@@ -119,7 +138,7 @@ function main(argv: string[]): number {
   } catch {
     throw new UsageError(`No se pudo leer ${file}.`);
   }
-  return command(file, source);
+  return command(file, source, { cfg: parsed.values.cfg });
 }
 
 try {
