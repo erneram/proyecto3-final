@@ -1,7 +1,7 @@
 import type { CheckResult } from "../check/checker.js";
 import type { Sym } from "../check/scope.js";
 import { isNumeric, type Type } from "../check/types.js";
-import type { BinaryOp as AstBinaryOp, Expr, ExprOf, Program, Stmt } from "../frontend/ast.js";
+import type { BinaryOp as AstBinaryOp, Expr, ExprOf, Program, Stmt, StmtOf } from "../frontend/ast.js";
 import { hops, planStorage, type Frame, type Place, type StoragePlan } from "./frames.js";
 import type { BinaryOp, IntOp, IrFunction, IrModule, Operand, PrintFormat, Quad, ValueClass } from "./ir.js";
 
@@ -58,9 +58,16 @@ const FLOAT_OPS: Partial<Record<AstBinaryOp, BinaryOp>> = {
   "<": "flt", "<=": "fle", ">": "fgt", ">=": "fge", "==": "feq", "!=": "fne",
 };
 
+/** Destinos de `break` y `continue` del bucle o `switch` más cercano. */
+interface JumpTargets {
+  breakTo: string;
+  continueTo?: string;
+}
+
 class FunctionLowerer {
   readonly quads: Quad[] = [];
   readonly temps: ValueClass[] = [];
+  readonly #targets: JumpTargets[] = [];
 
   constructor(
     readonly m: ModuleBuilder,
@@ -115,9 +122,130 @@ class FunctionLowerer {
       case "block":
         this.stmts(s.body);
         return;
+      case "if": {
+        const end = this.m.label();
+        const otherwise = s.otherwise ? this.m.label() : end;
+        this.jump(s.cond, false, otherwise);
+        this.stmts(s.then.body);
+        if (s.otherwise) {
+          this.emit({ op: "goto", target: end });
+          this.emit({ op: "label", name: otherwise });
+          this.stmts(s.otherwise.body);
+        }
+        this.emit({ op: "label", name: end });
+        return;
+      }
+      case "while": {
+        const top = this.m.label();
+        const end = this.m.label();
+        this.emit({ op: "label", name: top });
+        this.jump(s.cond, false, end);
+        this.loopBody(s.body.body, end, top);
+        this.emit({ op: "goto", target: top });
+        this.emit({ op: "label", name: end });
+        return;
+      }
+      case "doWhile": {
+        const top = this.m.label();
+        const test = this.m.label();
+        const end = this.m.label();
+        this.emit({ op: "label", name: top });
+        this.loopBody(s.body.body, end, test);
+        this.emit({ op: "label", name: test });
+        this.jump(s.cond, true, top);
+        this.emit({ op: "label", name: end });
+        return;
+      }
+      case "for": {
+        if (s.init) this.stmt(s.init);
+        const top = this.m.label();
+        const step = this.m.label();
+        const end = this.m.label();
+        this.emit({ op: "label", name: top });
+        if (s.cond) this.jump(s.cond, false, end);
+        this.loopBody(s.body.body, end, step);
+        this.emit({ op: "label", name: step });
+        if (s.update) this.expr(s.update);
+        this.emit({ op: "goto", target: top });
+        this.emit({ op: "label", name: end });
+        return;
+      }
+      case "switch":
+        this.switch(s);
+        return;
+      case "break":
+      case "continue": {
+        const target =
+          s.kind === "break" ? this.#targets.at(-1)?.breakTo : [...this.#targets].reverse().find((t) => t.continueTo)?.continueTo;
+        if (!target) throw new Error(`'${s.kind}' fuera de un bucle`);
+        this.emit({ op: "goto", target });
+        return;
+      }
       default:
         throw new Error(`Generación de código pendiente para '${s.kind}'`);
     }
+  }
+
+  loopBody(body: Stmt[], breakTo: string, continueTo?: string): void {
+    this.#targets.push({ breakTo, continueTo });
+    this.stmts(body);
+    this.#targets.pop();
+  }
+
+  /**
+   * Primero se prueban todos los casos en orden y luego vienen los cuerpos uno
+   * tras otro, así que un caso sin `break` cae en el siguiente.
+   */
+  switch(s: StmtOf<"switch">): void {
+    const st = this.typeOf(s.subject);
+    const subject = this.temp(classOfType(st));
+    this.emit({ op: "mov", dst: subject, a: this.expr(s.subject) });
+    const end = this.m.label();
+    const bodies = s.cases.map(() => this.m.label());
+    s.cases.forEach((c, i) => {
+      const hit = this.compute("==", subject, st, this.expr(c.test), this.typeOf(c.test));
+      this.emit({ op: "if", a: hit, target: bodies[i]! });
+    });
+    const fallback = s.fallback ? this.m.label() : end;
+    this.emit({ op: "goto", target: fallback });
+    this.#targets.push({ breakTo: end });
+    s.cases.forEach((c, i) => {
+      this.emit({ op: "label", name: bodies[i]! });
+      this.stmts(c.body);
+    });
+    if (s.fallback) {
+      this.emit({ op: "label", name: fallback });
+      this.stmts(s.fallback);
+    }
+    this.#targets.pop();
+    this.emit({ op: "label", name: end });
+  }
+
+  /**
+   * Código de saltos para condiciones: va a `target` si `e` vale `when` y si no
+   * continúa. `&&`, `||` y `!` se resuelven con saltos, sin materializar booleanos.
+   */
+  jump(e: Expr, when: boolean, target: string): void {
+    if (e.kind === "bool") {
+      if (e.value === when) this.emit({ op: "goto", target });
+      return;
+    }
+    if (e.kind === "unary" && e.op === "!") return this.jump(e.operand, !when, target);
+    if (e.kind === "binary" && (e.op === "&&" || e.op === "||")) {
+      // Valor del operando izquierdo que ya decide el resultado.
+      const decisive = e.op === "||";
+      if (when === decisive) {
+        this.jump(e.left, when, target);
+        this.jump(e.right, when, target);
+      } else {
+        const skip = this.m.label();
+        this.jump(e.left, decisive, skip);
+        this.jump(e.right, when, target);
+        this.emit({ op: "label", name: skip });
+      }
+      return;
+    }
+    this.emit({ op: when ? "if" : "ifnot", a: this.expr(e), target });
   }
 
   print(e: Expr): void {
@@ -222,7 +350,7 @@ class FunctionLowerer {
         const dst = this.temp(classOfType(t));
         const otherwise = this.m.label();
         const end = this.m.label();
-        this.emit({ op: "ifnot", a: this.expr(e.cond), target: otherwise });
+        this.jump(e.cond, false, otherwise);
         this.emit({ op: "mov", dst, a: this.coerced(e.then, t) });
         this.emit({ op: "goto", target: end });
         this.emit({ op: "label", name: otherwise });
@@ -255,15 +383,16 @@ class FunctionLowerer {
   }
 
   binary(e: ExprOf<"binary">): Operand {
-    const lt = this.typeOf(e.left);
-    const rt = this.typeOf(e.right);
-    let a = this.expr(e.left);
-    let b = this.expr(e.right);
+    const a = this.expr(e.left);
+    return this.compute(e.op, a, this.typeOf(e.left), this.expr(e.right), this.typeOf(e.right));
+  }
 
-    if (lt.tag === "string" && rt.tag === "string" && (e.op === "+" || e.op === "==" || e.op === "!=")) {
+  /** Aplica un operador binario a dos valores ya evaluados según sus tipos. */
+  compute(operator: AstBinaryOp, a: Operand, lt: Type, b: Operand, rt: Type): Operand {
+    if (lt.tag === "string" && rt.tag === "string" && (operator === "+" || operator === "==" || operator === "!=")) {
       const dst = this.temp("word");
-      this.emit({ op: e.op === "+" ? "concat" : "streq", dst, a, b });
-      if (e.op !== "!=") return dst;
+      this.emit({ op: operator === "+" ? "concat" : "streq", dst, a, b });
+      if (operator !== "!=") return dst;
       const negated = this.temp("word");
       this.emit({ op: "not", dst: negated, a: dst });
       return negated;
@@ -274,9 +403,9 @@ class FunctionLowerer {
       a = this.convert(a, lt, { tag: "float" });
       b = this.convert(b, rt, { tag: "float" });
     }
-    const op = float ? FLOAT_OPS[e.op] : INT_OPS[e.op];
-    if (!op) throw new Error(`Operador sin traducción: ${e.op}`);
-    const comparison = ["<", "<=", ">", ">=", "==", "!="].includes(e.op);
+    const op = float ? FLOAT_OPS[operator] : INT_OPS[operator];
+    if (!op) throw new Error(`Operador sin traducción: ${operator}`);
+    const comparison = ["<", "<=", ">", ">=", "==", "!="].includes(operator);
     const dst = this.temp(float && !comparison ? "float" : "word");
     this.emit({ op, dst, a, b });
     return dst;
