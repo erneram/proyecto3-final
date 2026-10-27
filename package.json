@@ -8,11 +8,17 @@
     "node": ">=22.12"
   },
   "scripts": {
+    "gen": "antlr-ng -Dlanguage=TypeScript --generate-visitor --generate-listener false -o src/frontend/gen grammar/Compis.g4",
+    "prepare": "npm run gen",
     "check": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "antlr-ng": "^1.0.10",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "antlr4ng": "^3.0.16"
   }
 }
