@@ -37,7 +37,7 @@ export type Quad =
   | { op: "call"; dst?: Operand; fn: string; argc: number }
   /** Llamada a un valor función (clausura {código, entorno}). */
   | { op: "callc"; dst?: Operand; closure: Operand; argc: number }
-  /** Llamada a método por vtable; el objeto ya fue apilado como primer argumento. */
+  /** Llamada a método por vtable; el objeto ya fue apilado como primer argumento (cuenta en `argc`). */
   | { op: "callm"; dst?: Operand; object: Operand; slot: number; argc: number }
   | { op: "ret"; a?: Operand }
   | { op: "print"; a: Operand; format: PrintFormat }
@@ -46,7 +46,8 @@ export type Quad =
   | { op: "load"; dst: Operand; base: Operand; offset: number }
   | { op: "store"; base: Operand; offset: number; a: Operand }
   | { op: "closure"; dst: Operand; fn: string; env: Operand }
-  | { op: "newobj"; dst: Operand; cls: string }
+  /** Objeto en ceros con su vtable y el entorno donde se declaró la clase (lo usan sus métodos). */
+  | { op: "newobj"; dst: Operand; cls: string; env: Operand }
   /** Acceso a campo con verificación de null. */
   | { op: "getf"; dst: Operand; object: Operand; offset: number }
   | { op: "setf"; object: Operand; offset: number; a: Operand }
@@ -85,10 +86,10 @@ export interface IrFunction {
 export interface ClassLayout {
   label: string;
   name: string;
-  /** Palabras por instancia; la palabra 0 apunta a la vtable. */
+  /** Palabras por instancia: vtable (palabra 0), entorno (palabra 1) y luego los campos. */
   words: number;
   fields: { name: string; offset: number }[];
-  /** Etiqueta de función por cada entrada de la vtable. */
+  /** Etiqueta de función por cada entrada de la vtable (incluye el constructor). */
   vtable: { name: string; fn: string }[];
 }
 

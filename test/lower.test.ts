@@ -276,3 +276,58 @@ describe("generación: arreglos", () => {
     ]);
   });
 });
+
+describe("generación: clases y objetos", () => {
+  const herencia = `class A { let x: float = 1; let ok: boolean; function constructor(v: float) { this.x = v; } function get(): float { return this.x; } }
+    class B : A { let y = 2; function get(): float { return this.x + this.y; } function extra() { print(this.y); } }
+    let b = new B(3); print(b.get()); b.y = 5; print(b.ok);`;
+
+  function module(src: string) {
+    const r = compile(src, "check");
+    assert.ok(r.ok && r.program && r.checked, JSON.stringify(r.diagnostics));
+    return lower(r.program, r.checked);
+  }
+
+  it("la subclase extiende la disposición de la padre y redefine en la misma entrada", () => {
+    const [a, b] = module(herencia).classes;
+    assert.deepEqual(a, {
+      label: "v0_A",
+      name: "A",
+      words: 4,
+      fields: [{ name: "x", offset: 8 }, { name: "ok", offset: 12 }],
+      vtable: [{ name: "constructor", fn: "m_A_constructor" }, { name: "get", fn: "m_A_get" }],
+    });
+    assert.equal(b?.words, 5);
+    assert.deepEqual(b?.vtable.map((e) => e.fn), ["m_A_constructor", "m_B_get", "m_B_extra"]);
+  });
+
+  it("new inicializa los campos de toda la cadena y llama al constructor heredado por la vtable", () => {
+    assert.deepEqual(mainBody(herencia), [
+      "t0 = new v1_B, 0",
+      "t0.[8] = 1.0",
+      "t0.[16] = 2",
+      "param t0",
+      "param 3.0",
+      "callm t0.vtable[0], 2",
+      "@b = t0",
+      "param @b",
+      "t1 = callm @b.vtable[1], 1",
+      "print.float t1",
+      "@b.[16] = 5",
+      "t2 = @b.[12]",
+      "print.bool t2",
+      "return",
+    ]);
+  });
+
+  it("los métodos leen campos a través de this", () => {
+    assert.deepEqual(fnBody(herencia, "B.get"), ["t0 = this.[8]", "t1 = this.[16]", "t2 = (float) t1", "t3 = t0 +. t2", "return t3"]);
+  });
+
+  it("un objeto guarda el entorno donde se declaró su clase", () => {
+    const src =
+      "function f(): integer { let n = 1; class C { function inc(): integer { n = n + 1; return n; } } let c = new C(); return c.inc(); } print(f());";
+    assert.ok(fnBody(src, "f").includes("t1 = new v0_C, $env"));
+    assert.deepEqual(fnBody(src, "f.C.inc").slice(0, 3), ["t0 = $env_in[4]", "t1 = t0 + 1", "$env_in[4] = t1"]);
+  });
+});

@@ -1,9 +1,9 @@
 import type { CheckResult } from "../check/checker.js";
 import type { Sym } from "../check/scope.js";
-import { isNumeric, UNKNOWN, VOID, type Type } from "../check/types.js";
-import type { BinaryOp as AstBinaryOp, Expr, ExprOf, FuncDecl, Program, Stmt, StmtOf } from "../frontend/ast.js";
+import { findMember, isNumeric, UNKNOWN, VOID, type ClassInfo, type Member, type Type } from "../check/types.js";
+import type { BinaryOp as AstBinaryOp, ClassDecl, Expr, ExprOf, FuncDecl, Program, Stmt, StmtOf } from "../frontend/ast.js";
 import { hops, planStorage, type Frame, type Place, type StoragePlan } from "./frames.js";
-import type { BinaryOp, IntOp, IrFunction, IrModule, Operand, PrintFormat, Quad, ValueClass } from "./ir.js";
+import type { BinaryOp, ClassLayout, IntOp, IrFunction, IrModule, Operand, PrintFormat, Quad, ValueClass } from "./ir.js";
 
 /** Traduce el AST ya verificado a código de tres direcciones. */
 export function lower(program: Program, checked: CheckResult): IrModule {
@@ -14,8 +14,14 @@ export function lower(program: Program, checked: CheckResult): IrModule {
   return builder.module;
 }
 
+/** Primera palabra libre de un objeto, después de la vtable y el entorno. */
+const FIELDS_START = 8;
+
 class ModuleBuilder {
   readonly module: IrModule;
+  /** Declaración de cada clase, para sus inicializadores y métodos. */
+  readonly decls = new Map<ClassInfo, ClassDecl>();
+  readonly #layouts = new Map<ClassInfo, ClassLayout>();
   #labels = 0;
 
   constructor(
@@ -23,6 +29,45 @@ class ModuleBuilder {
     readonly plan: StoragePlan,
   ) {
     this.module = { functions: [], globals: plan.globals, classes: [] };
+    for (const node of checked.scopes.keys()) {
+      const cls = (node as Stmt).kind === "class" ? checked.refs.get(node)?.cls : undefined;
+      if (cls) this.decls.set(cls, node as ClassDecl);
+    }
+  }
+
+  frameOf(decl: FuncDecl): Frame {
+    return this.plan.frames.get(this.checked.scopes.get(decl)!)!;
+  }
+
+  /**
+   * Los campos y la vtable de la clase padre son un prefijo de los de la hija,
+   * así un objeto de la hija sirve donde se espera la padre. Un método que
+   * redefine a otro ocupa su misma entrada.
+   */
+  layout(cls: ClassInfo): ClassLayout {
+    const known = this.#layouts.get(cls);
+    if (known) return known;
+    const parent = cls.parent && this.layout(cls.parent);
+    const fields = [...(parent?.fields ?? [])];
+    const vtable = [...(parent?.vtable ?? [])];
+    const decl = this.decls.get(cls)!;
+    for (const f of decl.fields) fields.push({ name: f.name, offset: FIELDS_START + 4 * fields.length });
+    for (const m of decl.methods) {
+      const entry = { name: m.name, fn: this.frameOf(m).label };
+      const slot = vtable.findIndex((e) => e.name === m.name);
+      if (slot >= 0) vtable[slot] = entry;
+      else vtable.push(entry);
+    }
+    const layout: ClassLayout = {
+      label: `v${cls.id}_${cls.name}`,
+      name: cls.name,
+      words: FIELDS_START / 4 + fields.length,
+      fields,
+      vtable,
+    };
+    this.#layouts.set(cls, layout);
+    this.module.classes.push(layout);
+    return layout;
   }
 
   label(): string {
@@ -46,6 +91,7 @@ class ModuleBuilder {
   }
 }
 
+const ZERO: Operand = { k: "int", value: 0 };
 const isFloat = (t: Type | undefined): boolean => t?.tag === "float";
 const classOfType = (t: Type | undefined): ValueClass => (isFloat(t) ? "float" : "word");
 
@@ -125,20 +171,15 @@ class FunctionLowerer {
       const sym = this.symOf(s);
       if (this.placeOf(sym).at === "label") continue;
       const closure = this.temp("word");
-      this.emit({ op: "closure", dst: closure, fn: this.frameOf(s).label, env: this.currentEnv() });
+      this.emit({ op: "closure", dst: closure, fn: this.m.frameOf(s).label, env: this.currentEnv() });
       this.write(sym, closure);
     }
     for (const s of list) this.stmt(s);
   }
 
-  frameOf(f: FuncDecl): Frame {
-    return this.m.plan.frames.get(this.m.checked.scopes.get(f)!)!;
-  }
-
-  /** Genera el cuerpo de `f` como una `IrFunction` aparte. */
-  func(f: FuncDecl): void {
-    const type = this.symOf(f).type;
-    const inner = new FunctionLowerer(this.m, this.frameOf(f), type.tag === "fn" ? type.ret : UNKNOWN);
+  /** Genera el cuerpo de `f` (función o método, de tipo `type`) como una `IrFunction` aparte. */
+  func(f: FuncDecl, type: Type): void {
+    const inner = new FunctionLowerer(this.m, this.m.frameOf(f), type.tag === "fn" ? type.ret : UNKNOWN);
     inner.prologue();
     inner.stmts(f.body);
     this.m.finish(inner);
@@ -217,8 +258,14 @@ class FunctionLowerer {
         this.foreach(s);
         return;
       case "func":
-        this.func(s);
+        this.func(s, this.symOf(s).type);
         return;
+      case "class": {
+        const cls = this.symOf(s).cls!;
+        this.m.layout(cls);
+        for (const method of s.methods) this.func(method, cls.members.get(method.name)!.type);
+        return;
+      }
       case "return":
         this.emit(s.value ? { op: "ret", a: this.coerced(s.value, this.ret) } : { op: "ret" });
         return;
@@ -339,12 +386,13 @@ class FunctionLowerer {
   /** Entorno que ve esta función: el propio, el recibido o ninguno (0). */
   currentEnv(): Operand {
     const own = this.frame.envOwn ?? this.frame.envIn;
-    return own === undefined ? { k: "int", value: 0 } : { k: "slot", index: own };
+    return own === undefined ? ZERO : { k: "slot", index: own };
   }
 
-  /** Puntero al entorno de `owner`, siguiendo la cadena de enlaces desde el entorno actual. */
+  /** Entorno que ve `owner`, siguiendo la cadena de enlaces desde el actual (0 si no ve ninguno). */
   envOf(owner: Frame): Operand {
-    const n = hops(this.frame, owner) ?? 0;
+    const n = hops(this.frame, owner);
+    if (n === undefined) return ZERO;
     let base = this.currentEnv();
     if (base.k !== "slot") throw new Error(`${this.frame.name} no tiene entorno`);
     for (let i = 0; i < n; i++) {
@@ -413,7 +461,18 @@ class FunctionLowerer {
       case "null":
         return { k: "int", value: 0 };
       case "name":
+      case "this":
         return this.read(this.symOf(e));
+      case "new":
+        return this.newObject(e);
+      case "member": {
+        const member = this.memberOf(e);
+        if (member.kind !== "field") throw new Error("Un método solo puede usarse llamándolo");
+        const object = this.expr(e.object);
+        const dst = this.temp(classOfType(member.type));
+        this.emit({ op: "getf", dst, object, offset: this.fieldOffset(e) });
+        return dst;
+      }
       case "assign":
         return this.assign(e);
       case "call":
@@ -457,8 +516,6 @@ class FunctionLowerer {
         this.emit({ op: "label", name: end });
         return dst;
       }
-      default:
-        throw new Error(`Generación de código pendiente para '${e.kind}'`);
     }
   }
 
@@ -468,7 +525,7 @@ class FunctionLowerer {
    * evalúan todos antes de apilar el primero, así una llamada anidada no se mezcla.
    */
   call(e: ExprOf<"call">): Operand {
-    if (e.callee.kind === "member") throw new Error("Generación de código pendiente para llamadas a métodos");
+    if (e.callee.kind === "member") return this.methodCall(e.callee, e.args);
     const sym = e.callee.kind === "name" ? this.symOf(e.callee) : undefined;
     const place = sym && this.placeOf(sym);
     // El símbolo de una función tiene el retorno ya inferido; el tipo de la expresión puede ser anterior.
@@ -484,7 +541,77 @@ class FunctionLowerer {
     return dst ?? { k: "int", value: 0 };
   }
 
+  memberOf(e: ExprOf<"member">): Member {
+    const member = this.m.checked.members.get(e);
+    if (!member) throw new Error(`Miembro sin resolver: ${e.name}`);
+    return member;
+  }
+
+  /** Clase estática del objeto de `e`: sus desplazamientos valen también para las subclases. */
+  staticClass(e: ExprOf<"member">): ClassInfo {
+    const t = this.typeOf(e.object);
+    if (t.tag !== "instance") throw new Error(`'${e.name}' sobre algo que no es objeto`);
+    return t.cls;
+  }
+
+  /** Si una subclase repite el nombre de un campo, el más cercano es el último de la disposición. */
+  fieldOffset(e: ExprOf<"member">): number {
+    return [...this.m.layout(this.staticClass(e)).fields].reverse().find((f) => f.name === e.name)!.offset;
+  }
+
+  /** Apila el objeto y los argumentos y despacha por la vtable. */
+  invoke(object: Operand, cls: ClassInfo, member: Member, args: Expr[]): Operand {
+    const params = member.type.tag === "fn" ? member.type.params : [];
+    const ret = member.type.tag === "fn" ? member.type.ret : UNKNOWN;
+    const values = args.map((a, i) => this.coerced(a, params[i] ?? this.typeOf(a)));
+    this.emit({ op: "param", a: object });
+    for (const a of values) this.emit({ op: "param", a });
+    const slot = this.m.layout(cls).vtable.findIndex((v) => v.name === member.name);
+    const dst = ret.tag === "void" ? undefined : this.temp(classOfType(ret));
+    this.emit({ op: "callm", dst, object, slot, argc: values.length + 1 });
+    return dst ?? { k: "int", value: 0 };
+  }
+
+  methodCall(callee: ExprOf<"member">, args: Expr[]): Operand {
+    const member = this.memberOf(callee);
+    if (member.kind !== "method") throw new Error(`'${callee.name}' no es un método`);
+    return this.invoke(this.expr(callee.object), this.staticClass(callee), member, args);
+  }
+
+  /**
+   * Reserva el objeto, corre los inicializadores de campos desde la clase más
+   * antigua hacia la más nueva y llama al constructor (propio o heredado).
+   */
+  newObject(e: ExprOf<"new">): Operand {
+    const cls = this.symOf(e).cls!;
+    const decl = this.m.decls.get(cls)!;
+    // Los métodos ven el entorno de la función donde se declaró la clase.
+    const scope = this.m.checked.scopes.get(decl)!.owner;
+    const env = scope ? this.envOf(this.m.plan.frames.get(scope)!) : ZERO;
+    const obj = this.temp("word");
+    this.emit({ op: "newobj", dst: obj, cls: this.m.layout(cls).label, env });
+    const chain: ClassInfo[] = [];
+    for (let c: ClassInfo | undefined = cls; c; c = c.parent) chain.unshift(c);
+    // Los campos de la cadena, en este orden, son justo los de la disposición.
+    let offset = FIELDS_START;
+    for (const c of chain) {
+      for (const f of this.m.decls.get(c)!.fields) {
+        if (f.init) this.emit({ op: "setf", object: obj, offset, a: this.coerced(f.init, c.members.get(f.name)!.type) });
+        offset += 4;
+      }
+    }
+    const ctor = findMember(cls, "constructor");
+    if (ctor?.kind === "method") this.invoke(obj, cls, ctor, e.args);
+    return obj;
+  }
+
   assign(e: ExprOf<"assign">): Operand {
+    if (e.target.kind === "member") {
+      const object = this.expr(e.target.object);
+      const value = this.coerced(e.value, this.memberOf(e.target).type);
+      this.emit({ op: "setf", object, offset: this.fieldOffset(e.target), a: value });
+      return value;
+    }
     if (e.target.kind === "index") {
       const array = this.expr(e.target.object);
       const index = this.expr(e.target.index);

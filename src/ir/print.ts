@@ -67,7 +67,7 @@ export function printQuad(q: Quad, fn: IrFunction, m: IrModule): string {
     case "closure":
       return `${v(q.dst)} = closure ${q.fn}, ${v(q.env)}`;
     case "newobj":
-      return `${v(q.dst)} = new ${q.cls}`;
+      return `${v(q.dst)} = new ${q.cls}, ${v(q.env)}`;
     case "getf":
       return `${v(q.dst)} = ${v(q.object)}.[${q.offset}]`;
     case "setf":
