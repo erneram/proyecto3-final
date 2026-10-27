@@ -153,3 +153,56 @@ describe("checker: funciones", () => {
     );
   });
 });
+
+describe("checker: clases", () => {
+  const punto = `class Punto {
+    let x: integer;
+    const origen = 0;
+    function constructor(x: integer) { this.x = x; }
+    function get() { return this.x; }
+  }`;
+
+  it("acepta campos, métodos, constructor y retorno inferido", () => {
+    assert.deepEqual(codes(`${punto} let p = new Punto(3); let v: integer = p.get(); print(p.x);`), []);
+  });
+
+  it("reporta miembros inexistentes y accesos sobre no-objetos", () => {
+    assert.deepEqual(codes(`${punto} let p = new Punto(1); print(p.y);`), ["E402"]);
+    assert.deepEqual(codes("let n = 1; print(n.x);"), ["E403"]);
+    assert.deepEqual(codes("print(new Nada());"), ["E401"]);
+  });
+
+  it("this solo existe dentro de métodos, incluidas sus funciones anidadas", () => {
+    assert.deepEqual(codes("print(this);"), ["E404"]);
+    assert.deepEqual(codes("class A { let a = this; }"), ["E404"]);
+    assert.deepEqual(codes("class A { let n = 1; function f() { function g() { return this.n; } return g(); } }"), []);
+  });
+
+  it("valida los argumentos del constructor, incluido el heredado", () => {
+    assert.deepEqual(codes(`${punto} new Punto();`), ["E301"]);
+    assert.deepEqual(codes(`${punto} new Punto("x");`), ["E302"]);
+    assert.deepEqual(codes(`${punto} class Punto3D : Punto { } let q: Punto = new Punto3D(1);`), []);
+    assert.deepEqual(codes("class Vacia { } new Vacia(1);"), ["E301"]);
+  });
+
+  it("no permite modificar constantes de clase ni métodos", () => {
+    assert.deepEqual(codes(`${punto} let p = new Punto(1); p.origen = 2;`), ["E203"]);
+    assert.deepEqual(codes(`${punto} let p = new Punto(1); p.get = 2;`), ["E203"]);
+  });
+
+  it("valida herencia: padre declarado, sin ciclos ni miembros repetidos", () => {
+    assert.deepEqual(codes("class A : Fantasma { }"), ["E405"]);
+    assert.deepEqual(codes("class A : B { } class B : A { }"), ["E406"]);
+    assert.deepEqual(codes("class A { let x = 1; function x() { } }"), ["E105"]);
+  });
+
+  it("los métodos redefinidos conservan la firma", () => {
+    const base = "class Animal { function sonido(veces: integer): string { return \"...\"; } }";
+    assert.deepEqual(codes(`${base} class Perro : Animal { function sonido(veces: integer): string { return "guau"; } }`), []);
+    assert.deepEqual(codes(`${base} class Gato : Animal { function sonido(): string { return "miau"; } }`), ["E407"]);
+  });
+
+  it("las clases homónimas en bloques distintos son tipos distintos", () => {
+    assert.deepEqual(codes("{ class A { } let a: A = new A(); } { class A { let v = 1; } let b: A = new A(); print(b.v); }"), []);
+  });
+});

@@ -1,11 +1,12 @@
 import type { Diagnostic } from "../diagnostic.js";
 import { pushCapped } from "../diagnostic.js";
-import type { Block, Expr, FuncDecl, Pos, Program, Stmt, TypeRef } from "../frontend/ast.js";
+import type { Block, ClassDecl, Expr, FuncDecl, Pos, Program, Stmt, TypeRef } from "../frontend/ast.js";
 import { CODES, severityOf, type CodeArgs, type CodeKey } from "./codes.js";
 import { crossesFunction, SymbolTable, type Scope, type ScopeKind, type Sym } from "./scope.js";
 import {
-  arrayOf, assignable, BOOL, commonType, comparable, ERROR, FLOAT, fnType, instanceOf, INT, isAbsorbing,
-  isNumeric, NULL, numericResult, primitiveByName, STRING, typeName, UNKNOWN, VOID, type ClassInfo, type Type,
+  arrayOf, assignable, BOOL, commonType, comparable, ERROR, findMember, FLOAT, fnType, instanceOf, INT,
+  isAbsorbing, isNumeric, NULL, numericResult, primitiveByName, sameType, STRING, typeName, UNKNOWN, VOID,
+  type ClassInfo, type Member, type Type,
 } from "./types.js";
 import type { BinaryOp } from "../frontend/ast.js";
 
@@ -18,6 +19,8 @@ export interface CheckResult {
   refs: Map<object, Sym>;
   /** Ámbito que abre cada nodo (programa, funciones, bloques, ciclos...). */
   scopes: Map<object, Scope>;
+  /** Miembro resuelto por cada acceso `obj.nombre`. */
+  members: Map<Expr, Member>;
 }
 
 export function check(program: Program): CheckResult {
@@ -47,6 +50,7 @@ class Checker implements CheckResult {
   readonly types = new Map<Expr, Type>();
   readonly refs = new Map<object, Sym>();
   readonly scopes = new Map<object, Scope>();
+  readonly members = new Map<Expr, Member>();
   #classIds = 0;
   #warnedUninitialized = new Set<Sym>();
   #fns: FnContext[] = [];
@@ -77,11 +81,71 @@ class Checker implements CheckResult {
       const cls: ClassInfo = { id: this.#classIds++, name: s.name, members: new Map(), pos: s.pos };
       this.declare(scope, { name: s.name, kind: "class", type: { tag: "classRef", cls }, pos: s.pos, cls }, s);
     }
+    const classes = list.filter((s): s is ClassDecl => s.kind === "class");
+    for (const c of classes) this.linkParent(c, scope);
+    for (const c of classes) this.breakCycle(c);
+    for (const c of classes) this.collectMembers(c, scope);
+    for (const c of classes) this.checkOverrides(c);
     for (const s of list) {
       if (s.kind !== "func") continue;
       const params = s.params.map((p) => this.resolveType(p.type, scope));
       const ret = s.returnType ? this.resolveType(s.returnType, scope) : UNKNOWN;
       this.declare(scope, { name: s.name, kind: "function", type: fnType(params, ret), pos: s.pos }, s);
+    }
+  }
+
+  classOf(c: ClassDecl): ClassInfo {
+    return this.refs.get(c)!.cls!;
+  }
+
+  linkParent(c: ClassDecl, scope: Scope): void {
+    if (!c.parent) return;
+    const parent = scope.lookup(c.parent.name);
+    if (parent?.cls) this.classOf(c).parent = parent.cls;
+    else this.report("unknownParent", c.parent.pos, c.name, c.parent.name);
+  }
+
+  /** Un ciclo de herencia se reporta en la primera clase que lo cierra y se corta ahí. */
+  breakCycle(c: ClassDecl): void {
+    const cls = this.classOf(c);
+    const seen = new Set<ClassInfo>();
+    for (let p = cls.parent; p && !seen.has(p); p = p.parent) {
+      if (p === cls) {
+        this.report("cyclicInheritance", c.pos, c.name);
+        cls.parent = undefined;
+        return;
+      }
+      seen.add(p);
+    }
+  }
+
+  collectMembers(c: ClassDecl, scope: Scope): void {
+    const cls = this.classOf(c);
+    const add = (name: string, kind: Member["kind"], type: Type, mutable: boolean, pos: Pos): void => {
+      if (cls.members.has(name)) this.report("duplicateMember", pos, cls.name, name);
+      else cls.members.set(name, { name, kind, type, mutable, pos, owner: cls });
+    };
+    for (const f of c.fields) add(f.name, "field", this.resolveType(f.type, scope), f.kind === "let", f.pos);
+    for (const m of c.methods) {
+      const params = m.params.map((p) => this.resolveType(p.type, scope));
+      add(m.name, "method", fnType(params, m.returnType ? this.resolveType(m.returnType, scope) : UNKNOWN), false, m.pos);
+    }
+  }
+
+  /** Un método redefinido debe conservar la firma del heredado (el constructor queda libre). */
+  checkOverrides(c: ClassDecl): void {
+    const cls = this.classOf(c);
+    for (const m of c.methods) {
+      const own = cls.members.get(m.name);
+      const inherited = cls.parent && findMember(cls.parent, m.name);
+      if (m.name === "constructor" || own?.pos !== m.pos || inherited?.kind !== "method") continue;
+      if (own.type.tag !== "fn" || inherited.type.tag !== "fn") continue;
+      const a = own.type;
+      const b = inherited.type;
+      const fits = (x: Type, y: Type): boolean => isAbsorbing(x) || isAbsorbing(y) || sameType(x, y);
+      const ok = a.params.length === b.params.length && a.params.every((t, i) => fits(t, b.params[i])) &&
+        (isAbsorbing(a.ret) || assignable(b.ret, a.ret));
+      if (!ok) this.report("overrideMismatch", m.pos, m.name, inherited.owner.name);
     }
   }
 
@@ -130,6 +194,7 @@ class Checker implements CheckResult {
         this.func(s, scope);
         return;
       case "class":
+        this.classBody(s, scope);
         return;
       case "block":
         this.block(s, scope);
@@ -200,10 +265,14 @@ class Checker implements CheckResult {
     }
   }
 
-  func(f: FuncDecl, scope: Scope): void {
-    const inner = this.open(f, "function", f.name, scope);
-    const sym = this.refs.get(f);
-    const paramTypes = sym?.type.tag === "fn" ? sym.type.params : [];
+  /** Funciones y métodos; en un método, `cls` es su clase y el ámbito declara `this`. */
+  func(f: FuncDecl, scope: Scope, cls?: ClassInfo): void {
+    const inner = this.open(f, cls ? "method" : "function", f.name, scope);
+    const member = cls?.members.get(f.name);
+    // Quien guarda la firma: el símbolo de la función o el miembro de la clase (si no está repetido).
+    const holder: { type: Type } | undefined = cls ? (member?.pos === f.pos ? member : undefined) : this.refs.get(f);
+    const paramTypes = holder?.type.tag === "fn" ? holder.type.params : [];
+    if (cls) this.table.define(inner, { name: "this", kind: "parameter", type: instanceOf(cls), pos: f.pos, mutable: false });
     f.params.forEach((p, i) => {
       if (f.params.findIndex((q) => q.name === p.name) < i) {
         this.report("duplicateParam", p.pos, p.name);
@@ -212,12 +281,28 @@ class Checker implements CheckResult {
       this.declare(inner, { name: p.name, kind: "parameter", type: paramTypes[i] ?? UNKNOWN, pos: p.pos }, p);
     });
     const ctx: FnContext = { name: f.name, returns: [] };
-    if (f.returnType && sym?.type.tag === "fn") ctx.declared = sym.type.ret;
+    if (f.returnType && holder?.type.tag === "fn") ctx.declared = holder.type.ret;
     this.#fns.push(ctx);
     this.stmts(f.body, inner);
     this.#fns.pop();
     // Sin anotación, el retorno se infiere de los `return` del cuerpo.
-    if (!f.returnType && sym?.type.tag === "fn") sym.type = fnType(sym.type.params, inferReturn(ctx.returns));
+    if (!f.returnType && holder?.type.tag === "fn") holder.type = fnType(holder.type.params, inferReturn(ctx.returns));
+  }
+
+  classBody(c: ClassDecl, scope: Scope): void {
+    const cls = this.refs.get(c)?.cls;
+    if (!cls) return;
+    const inner = this.open(c, "class", c.name, scope);
+    // Inicializadores primero: así los campos sin anotación ya tienen tipo al revisar los métodos.
+    for (const f of c.fields) {
+      if (!f.init) continue;
+      const value = this.expr(f.init, inner);
+      const member = cls.members.get(f.name);
+      if (member?.pos !== f.pos) continue;
+      if (!f.type) member.type = value.tag === "null" ? UNKNOWN : value;
+      else if (!assignable(member.type, value)) this.report("badInit", f.init.pos, f.name, typeName(member.type), typeName(value));
+    }
+    for (const m of c.methods) this.func(m, inner, cls);
   }
 
   returnStmt(s: Extract<Stmt, { kind: "return" }>, scope: Scope): void {
@@ -288,6 +373,12 @@ class Checker implements CheckResult {
       }
       case "call":
         return this.call(e, scope);
+      case "this":
+        return this.thisRef(e, scope);
+      case "new":
+        return this.newObject(e, scope);
+      case "member":
+        return this.member(e, scope);
       case "binary":
         return this.binary(e.op, this.expr(e.left, scope), this.expr(e.right, scope), e.pos);
       case "ternary": {
@@ -327,8 +418,11 @@ class Checker implements CheckResult {
     if (e.target.kind !== "name") {
       const target = this.expr(e.target, scope);
       const invalid = INVALID_TARGET[e.target.kind];
+      const member = this.members.get(e.target);
       if (invalid) this.report("invalidTarget", e.target.pos, invalid);
-      else if (!assignable(target, value)) this.report("badAssign", e.target.pos, typeName(target), typeName(value));
+      else if (member && !member.mutable) {
+        this.report("immutable", e.target.pos, `.${member.name}`, member.kind === "method" ? "un método" : "una constante");
+      } else if (!assignable(target, value)) this.report("badAssign", e.target.pos, typeName(target), typeName(value));
       return value;
     }
     const sym = this.use(e.target, scope, false);
@@ -363,6 +457,51 @@ class Checker implements CheckResult {
     args.forEach((a, i) => {
       if (!assignable(params[i], a)) this.report("argType", e.args[i].pos, i + 1, callee, typeName(params[i]), typeName(a));
     });
+  }
+
+  /** `this` es léxico: lo declara el método y lo ven también sus funciones anidadas. */
+  thisRef(e: Extract<Expr, { kind: "this" }>, scope: Scope): Type {
+    for (let s: Scope | undefined = scope; s && s.kind !== "class"; s = s.parent) {
+      const sym = s.lookupLocal("this");
+      if (!sym) continue;
+      sym.uses.push(e.pos);
+      this.refs.set(e, sym);
+      if (crossesFunction(sym, scope)) sym.captured = true;
+      return sym.type;
+    }
+    this.report("thisOutside", e.pos);
+    return ERROR;
+  }
+
+  newObject(e: Extract<Expr, { kind: "new" }>, scope: Scope): Type {
+    const args = e.args.map((a) => this.expr(a, scope));
+    const sym = scope.lookup(e.className);
+    if (!sym?.cls) {
+      this.report("notAClass", e.pos, e.className);
+      return ERROR;
+    }
+    sym.uses.push(e.pos);
+    this.refs.set(e, sym);
+    const ctor = findMember(sym.cls, "constructor");
+    const params = ctor?.kind === "method" && ctor.type.tag === "fn" ? ctor.type.params : [];
+    this.checkArgs(`el constructor de '${sym.cls.name}'`, params, args, e);
+    return instanceOf(sym.cls);
+  }
+
+  member(e: Extract<Expr, { kind: "member" }>, scope: Scope): Type {
+    const object = this.expr(e.object, scope);
+    if (isAbsorbing(object)) return UNKNOWN;
+    if (object.tag !== "instance") {
+      this.report("memberOnNonObject", e.pos, e.name, typeName(object));
+      return ERROR;
+    }
+    const m = findMember(object.cls, e.name);
+    if (!m) {
+      this.report("noMember", e.pos, object.cls.name, e.name);
+      return ERROR;
+    }
+    this.members.set(e, m);
+    return m.type;
   }
 
   /** Evalúa una condición y exige que sea boolean. */
