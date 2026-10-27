@@ -72,7 +72,17 @@ class Checker implements CheckResult {
   /** Lista de sentencias: clases y funciones se declaran antes de recorrer el resto. */
   stmts(list: Stmt[], scope: Scope): void {
     this.hoist(list, scope);
-    for (const s of list) this.stmt(s, scope);
+    let ended = false;
+    let warned = false;
+    for (const s of list) {
+      // Las declaraciones de funciones y clases se izan: siguen siendo alcanzables.
+      if (ended && !warned && s.kind !== "func" && s.kind !== "class") {
+        this.report("unreachable", s.pos);
+        warned = true;
+      }
+      this.stmt(s, scope);
+      ended ||= terminates(s, scope);
+    }
   }
 
   hoist(list: Stmt[], scope: Scope): void {
@@ -206,22 +216,22 @@ class Checker implements CheckResult {
         this.expr(s.expr, scope);
         return;
       case "if":
-        this.expr(s.cond, scope);
+        this.condition(s.cond, scope, "if");
         this.block(s.then, scope);
         if (s.otherwise) this.block(s.otherwise, scope);
         return;
       case "while":
-        this.expr(s.cond, scope);
+        this.condition(s.cond, scope, "while");
         this.block(s.body, scope, "loop", "while");
         return;
       case "doWhile":
         this.block(s.body, scope, "loop", "do-while");
-        this.expr(s.cond, scope);
+        this.condition(s.cond, scope, "do-while");
         return;
       case "for": {
         const loop = this.open(s, "loop", "for", scope);
         if (s.init) this.stmt(s.init, loop);
-        if (s.cond) this.expr(s.cond, loop);
+        if (s.cond) this.condition(s.cond, loop, "for");
         if (s.update) this.expr(s.update, loop);
         this.block(s.body, loop);
         return;
@@ -247,10 +257,13 @@ class Checker implements CheckResult {
         return;
       }
       case "switch": {
-        this.expr(s.subject, scope);
+        const subject = this.expr(s.subject, scope);
+        const switchable = isAbsorbing(subject) || ["int", "float", "string", "bool"].includes(subject.tag);
+        if (!switchable) this.report("switchType", s.subject.pos, typeName(subject));
         const inner = this.open(s, "switch", "switch", scope);
         for (const c of s.cases) {
-          this.expr(c.test, inner);
+          const test = this.expr(c.test, inner);
+          if (switchable && !comparable(subject, test)) this.report("caseType", c.test.pos, typeName(test), typeName(subject));
           this.stmts(c.body, inner);
         }
         if (s.fallback) this.stmts(s.fallback, inner);
@@ -260,7 +273,10 @@ class Checker implements CheckResult {
         this.returnStmt(s, scope);
         return;
       case "break":
+        if (!jumpTarget(scope, ["loop", "switch"])) this.report("breakOutside", s.pos);
+        return;
       case "continue":
+        if (!jumpTarget(scope, ["loop"])) this.report("continueOutside", s.pos);
         return;
     }
   }
@@ -285,6 +301,9 @@ class Checker implements CheckResult {
     this.#fns.push(ctx);
     this.stmts(f.body, inner);
     this.#fns.pop();
+    if (ctx.declared && !isAbsorbing(ctx.declared) && !returnsOnAllPaths(f.body)) {
+      this.report("missingReturn", f.pos, f.name, typeName(ctx.declared));
+    }
     // Sin anotación, el retorno se infiere de los `return` del cuerpo.
     if (!f.returnType && holder?.type.tag === "fn") holder.type = fnType(holder.type.params, inferReturn(ctx.returns));
   }
@@ -530,6 +549,68 @@ class Checker implements CheckResult {
     if (result) return result;
     this.report("badOperands", pos, op, typeName(left), typeName(right));
     return BOOLEAN_OPS.has(op) ? BOOL : ERROR;
+  }
+}
+
+/** ¿Hay un ciclo (o switch) que reciba el salto antes de cruzar el límite de una función? */
+function jumpTarget(scope: Scope, kinds: ScopeKind[]): boolean {
+  for (let s: Scope | undefined = scope; s; s = s.parent) {
+    if (kinds.includes(s.kind)) return true;
+    if (s.kind === "function" || s.kind === "method" || s.kind === "class") return false;
+  }
+  return false;
+}
+
+/**
+ * La sentencia nunca deja seguir a la siguiente de su lista. Un salto inválido
+ * (ya reportado como error) no cuenta, para no sumar advertencias en cascada.
+ */
+function terminates(s: Stmt, scope: Scope): boolean {
+  switch (s.kind) {
+    case "return":
+      return scope.owner !== undefined;
+    case "break":
+      return jumpTarget(scope, ["loop", "switch"]);
+    case "continue":
+      return jumpTarget(scope, ["loop"]);
+    case "block":
+      return s.body.some((b) => terminates(b, scope));
+    case "if":
+      return !!s.otherwise && terminates(s.then, scope) && terminates(s.otherwise, scope);
+    case "try":
+      return terminates(s.body, scope) && terminates(s.handler, scope);
+    default:
+      return false;
+  }
+}
+
+/** Todos los caminos de la lista terminan en return (los ciclos no cuentan: pueden no ejecutarse). */
+function returnsOnAllPaths(list: Stmt[]): boolean {
+  return list.some(returns);
+}
+
+function returns(s: Stmt): boolean {
+  switch (s.kind) {
+    case "return":
+      return true;
+    case "block":
+      return returnsOnAllPaths(s.body);
+    case "if":
+      return !!s.otherwise && returns(s.then) && returns(s.otherwise);
+    case "try":
+      return returns(s.body) && returns(s.handler);
+    case "switch": {
+      // De atrás hacia adelante: un caso sin break cae en el siguiente.
+      if (!s.fallback || !returnsOnAllPaths(s.fallback)) return false;
+      let next = true;
+      for (const c of [...s.cases].reverse()) {
+        next = returnsOnAllPaths(c.body) || (next && !c.body.some((b) => b.kind === "break"));
+        if (!next) return false;
+      }
+      return true;
+    }
+    default:
+      return false;
   }
 }
 

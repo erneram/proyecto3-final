@@ -206,3 +206,46 @@ describe("checker: clases", () => {
     assert.deepEqual(codes("{ class A { } let a: A = new A(); } { class A { let v = 1; } let b: A = new A(); print(b.v); }"), []);
   });
 });
+
+describe("checker: flujo de control", () => {
+  it("las condiciones de if, while, do-while y for deben ser boolean", () => {
+    assert.deepEqual(codes("if (1) { }"), ["E207"]);
+    assert.deepEqual(codes('while ("s") { }'), ["E207"]);
+    assert.deepEqual(codes("do { } while (2.5);"), ["E207"]);
+    assert.deepEqual(codes("for (let i = 0; i; i = i + 1) { }"), ["E207"]);
+  });
+
+  it("switch admite valores primitivos y casos comparables", () => {
+    assert.deepEqual(codes('switch (2.5) { case 1: print("uno"); case 2.5: print("dos"); }'), []);
+    assert.deepEqual(codes("switch ([1]) { case 1: }"), ["E213"]);
+    assert.deepEqual(codes('switch (1) { case "uno": }'), ["E214"]);
+  });
+
+  it("break y continue requieren un destino dentro de la misma función", () => {
+    assert.deepEqual(codes("break; print(1);"), ["E501"]);
+    assert.deepEqual(codes("switch (1) { case 1: break; }"), []);
+    assert.deepEqual(codes("switch (1) { case 1: continue; }"), ["E502"]);
+    assert.deepEqual(codes("while (true) { switch (1) { case 1: continue; } }"), []);
+    assert.deepEqual(codes("while (true) { function f() { break; } }"), ["E501"]);
+  });
+
+  it("advierte código inalcanzable una vez por lista, sin contar declaraciones izadas", () => {
+    assert.deepEqual(codes("function f(): integer { return 1; print(2); print(3); }"), ["W501"]);
+    assert.deepEqual(codes("function f() { return g(); function g(): integer { return 1; } }"), []);
+    assert.deepEqual(codes("while (true) { if (true) { break; } else { continue; } print(1); }"), ["W501"]);
+  });
+
+  it("advierte funciones tipadas que no retornan en todos los caminos", () => {
+    assert.deepEqual(codes("function f(x: integer): integer { if (x > 0) { return 1; } }"), ["W502"]);
+    assert.deepEqual(codes("function f(x: integer): integer { if (x > 0) { return 1; } else { return 2; } }"), []);
+    assert.deepEqual(codes("function f(x: integer): integer { while (true) { return 1; } }"), ["W502"]);
+    assert.deepEqual(
+      codes("function f(x: integer): string { switch (x) { case 1: case 2: return \"bajo\"; default: return \"alto\"; } }"),
+      [],
+    );
+    assert.deepEqual(
+      codes("function f(x: integer): string { switch (x) { case 1: break; default: return \"alto\"; } }"),
+      ["W502"],
+    );
+  });
+});

@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { check } from "./check/checker.js";
+import { SYMBOL_KIND_LABEL } from "./check/scope.js";
+import { typeName } from "./check/types.js";
 import type { Diagnostic } from "./diagnostic.js";
 import { buildProgram } from "./frontend/build.js";
 import { outline, renderOutline } from "./frontend/outline.js";
@@ -10,6 +13,7 @@ const USAGE = `Uso: compis <comando> <archivo.cps>
 Comandos:
   tokens   Lista los tokens reconocidos
   tree     Muestra el árbol sintáctico abstracto
+  check    Valida la semántica y muestra la tabla de símbolos
 
 Opciones:
   -h, --help   Muestra esta ayuda`;
@@ -58,7 +62,38 @@ const commands: Record<string, Command> = {
     console.log(renderOutline(outline(buildProgram(tree))));
     return 0;
   },
+
+  check(file, source) {
+    const { tree, diagnostics } = parse(source);
+    if (diagnostics.length) {
+      report(file, diagnostics);
+      return 1;
+    }
+    const result = check(buildProgram(tree));
+    const rows = result.table.symbols.map((s) => [
+      String(s.id),
+      s.name,
+      SYMBOL_KIND_LABEL[s.kind],
+      typeName(s.type),
+      s.scope.name,
+      String(s.uses.length),
+      s.captured ? "sí" : "",
+    ]);
+    printTable(["id", "nombre", "clase", "tipo", "ámbito", "usos", "capturado"], rows);
+    const captured = result.table.symbols.filter((s) => s.captured).length;
+    console.log(`\n${result.table.symbols.length} símbolos · ${result.table.scopes.length} ámbitos · ${captured} capturados`);
+    report(file, result.diagnostics);
+    return result.diagnostics.some((d) => d.severity === "error") ? 1 : 0;
+  },
 };
+
+function printTable(header: string[], rows: string[][]): void {
+  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
+  const line = (cells: string[]): string => cells.map((c, i) => c.padEnd(widths[i])).join("  ").trimEnd();
+  console.log(line(header));
+  console.log(line(widths.map((w) => "─".repeat(w))));
+  for (const r of rows) console.log(line(r));
+}
 
 function main(argv: string[]): number {
   let parsed;
