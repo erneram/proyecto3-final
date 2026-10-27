@@ -1,12 +1,10 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { check } from "./check/checker.js";
 import { SYMBOL_KIND_LABEL } from "./check/scope.js";
 import { typeName } from "./check/types.js";
 import type { Diagnostic } from "./diagnostic.js";
-import { buildProgram } from "./frontend/build.js";
+import { compile } from "./compile.js";
 import { outline, renderOutline } from "./frontend/outline.js";
-import { parse } from "./frontend/parse.js";
 
 const USAGE = `Uso: compis <comando> <archivo.cps>
 
@@ -42,7 +40,7 @@ function report(file: string, diagnostics: Diagnostic[]): void {
 
 const commands: Record<string, Command> = {
   tokens(file, source) {
-    const { tokens, diagnostics } = parse(source);
+    const { tokens, diagnostics } = compile(source, "parse");
     const lexical = diagnostics.filter((d) => d.phase === "lexer");
     const width = Math.max(0, ...tokens.map((t) => t.kind.length));
     for (const t of tokens) {
@@ -54,23 +52,23 @@ const commands: Record<string, Command> = {
   },
 
   tree(file, source) {
-    const { tree, diagnostics } = parse(source);
-    if (diagnostics.length) {
+    const { program, diagnostics } = compile(source, "parse");
+    if (!program) {
       report(file, diagnostics);
       return 1;
     }
-    console.log(renderOutline(outline(buildProgram(tree))));
+    console.log(renderOutline(outline(program)));
     return 0;
   },
 
   check(file, source) {
-    const { tree, diagnostics } = parse(source);
-    if (diagnostics.length) {
+    const { checked, diagnostics, ok, stopped } = compile(source, "check");
+    if (!checked) {
       report(file, diagnostics);
+      if (stopped) console.error(`nota: ${stopped.reason}`);
       return 1;
     }
-    const result = check(buildProgram(tree));
-    const rows = result.table.symbols.map((s) => [
+    const rows = checked.table.symbols.map((s) => [
       String(s.id),
       s.name,
       SYMBOL_KIND_LABEL[s.kind],
@@ -80,10 +78,10 @@ const commands: Record<string, Command> = {
       s.captured ? "sí" : "",
     ]);
     printTable(["id", "nombre", "clase", "tipo", "ámbito", "usos", "capturado"], rows);
-    const captured = result.table.symbols.filter((s) => s.captured).length;
-    console.log(`\n${result.table.symbols.length} símbolos · ${result.table.scopes.length} ámbitos · ${captured} capturados`);
-    report(file, result.diagnostics);
-    return result.diagnostics.some((d) => d.severity === "error") ? 1 : 0;
+    const captured = checked.table.symbols.filter((s) => s.captured).length;
+    console.log(`\n${checked.table.symbols.length} símbolos · ${checked.table.scopes.length} ámbitos · ${captured} capturados`);
+    report(file, diagnostics);
+    return ok ? 0 : 1;
   },
 };
 
