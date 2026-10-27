@@ -48,7 +48,7 @@ export const CODES = {
 
   // Funciones
   argCount: entry("E301", "Cantidad de argumentos", (callee: string, expected: number, given: number) =>
-    `${callee} espera ${expected} argumento(s), pero se pasaron ${given}.`),
+    `${callee[0].toUpperCase()}${callee.slice(1)} espera ${expected} argumento(s), pero se pasaron ${given}.`),
   argType: entry("E302", "Argumento incompatible", (index: number, callee: string, expected: string, found: string) =>
     `El argumento ${index} de ${callee} debe ser '${expected}'; se recibió '${found}'.`),
   notCallable: entry("E303", "Valor no invocable", (found: string) => `Un valor '${found}' no se puede invocar.`),

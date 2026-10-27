@@ -14,7 +14,7 @@ describe("catálogo de diagnósticos", () => {
   });
 
   it("redacta mensajes con los datos recibidos", () => {
-    assert.equal(CODES.argCount.message("la función 'f'", 2, 3), "la función 'f' espera 2 argumento(s), pero se pasaron 3.");
+    assert.equal(CODES.argCount.message("la función 'f'", 2, 3), "La función 'f' espera 2 argumento(s), pero se pasaron 3.");
     assert.match(CODES.redeclared.message("x", 4), /línea 4/);
   });
 });

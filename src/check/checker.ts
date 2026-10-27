@@ -5,7 +5,7 @@ import { CODES, severityOf, type CodeArgs, type CodeKey } from "./codes.js";
 import { crossesFunction, SymbolTable, type Scope, type ScopeKind, type Sym } from "./scope.js";
 import {
   arrayOf, assignable, BOOL, commonType, comparable, ERROR, FLOAT, fnType, instanceOf, INT, isAbsorbing,
-  isNumeric, NULL, numericResult, primitiveByName, STRING, typeName, UNKNOWN, type ClassInfo, type Type,
+  isNumeric, NULL, numericResult, primitiveByName, STRING, typeName, UNKNOWN, VOID, type ClassInfo, type Type,
 } from "./types.js";
 import type { BinaryOp } from "../frontend/ast.js";
 
@@ -27,6 +27,13 @@ export function check(program: Program): CheckResult {
   return checker;
 }
 
+/** Función en curso: tipo de retorno declarado o, si no hay, los retornos vistos para inferirlo. */
+interface FnContext {
+  name: string;
+  declared?: Type;
+  returns: Type[];
+}
+
 const IMMUTABLE_WHAT: Partial<Record<Sym["kind"], string>> = {
   constant: "una constante",
   function: "una función",
@@ -42,6 +49,7 @@ class Checker implements CheckResult {
   readonly scopes = new Map<object, Scope>();
   #classIds = 0;
   #warnedUninitialized = new Set<Sym>();
+  #fns: FnContext[] = [];
 
   report<K extends CodeKey>(key: K, pos: Pos, ...args: CodeArgs<K>): void {
     const { code, message } = CODES[key];
@@ -184,7 +192,7 @@ class Checker implements CheckResult {
         return;
       }
       case "return":
-        if (s.value) this.expr(s.value, scope);
+        this.returnStmt(s, scope);
         return;
       case "break":
       case "continue":
@@ -203,7 +211,27 @@ class Checker implements CheckResult {
       }
       this.declare(inner, { name: p.name, kind: "parameter", type: paramTypes[i] ?? UNKNOWN, pos: p.pos }, p);
     });
+    const ctx: FnContext = { name: f.name, returns: [] };
+    if (f.returnType && sym?.type.tag === "fn") ctx.declared = sym.type.ret;
+    this.#fns.push(ctx);
     this.stmts(f.body, inner);
+    this.#fns.pop();
+    // Sin anotación, el retorno se infiere de los `return` del cuerpo.
+    if (!f.returnType && sym?.type.tag === "fn") sym.type = fnType(sym.type.params, inferReturn(ctx.returns));
+  }
+
+  returnStmt(s: Extract<Stmt, { kind: "return" }>, scope: Scope): void {
+    const value = s.value ? this.expr(s.value, scope) : VOID;
+    const ctx = this.#fns.at(-1);
+    if (!ctx) {
+      this.report("returnOutside", s.pos);
+    } else if (!ctx.declared) {
+      ctx.returns.push(value);
+    } else if (!s.value) {
+      this.report("returnMissingValue", s.pos, ctx.name, typeName(ctx.declared));
+    } else if (!assignable(ctx.declared, value)) {
+      this.report("returnType", s.value.pos, ctx.name, typeName(ctx.declared), typeName(value));
+    }
   }
 
   open(node: object, kind: ScopeKind, name: string, parent: Scope, pos?: Pos): Scope {
@@ -258,6 +286,8 @@ class Checker implements CheckResult {
         this.report("badOperand", e.pos, e.op, typeName(operand));
         return e.op === "!" ? BOOL : ERROR;
       }
+      case "call":
+        return this.call(e, scope);
       case "binary":
         return this.binary(e.op, this.expr(e.left, scope), this.expr(e.right, scope), e.pos);
       case "ternary": {
@@ -313,6 +343,28 @@ class Checker implements CheckResult {
     return value;
   }
 
+  call(e: Extract<Expr, { kind: "call" }>, scope: Scope): Type {
+    const callee = this.expr(e.callee, scope);
+    const args = e.args.map((a) => this.expr(a, scope));
+    if (isAbsorbing(callee)) return UNKNOWN;
+    if (callee.tag !== "fn") {
+      this.report("notCallable", e.pos, typeName(callee));
+      return ERROR;
+    }
+    this.checkArgs(describeCallee(e.callee), callee.params, args, e);
+    return callee.ret;
+  }
+
+  checkArgs(callee: string, params: Type[], args: Type[], e: { args: Expr[]; pos: Pos }): void {
+    if (params.length !== args.length) {
+      this.report("argCount", e.pos, callee, params.length, args.length);
+      return;
+    }
+    args.forEach((a, i) => {
+      if (!assignable(params[i], a)) this.report("argType", e.args[i].pos, i + 1, callee, typeName(params[i]), typeName(a));
+    });
+  }
+
   /** Evalúa una condición y exige que sea boolean. */
   condition(e: Expr, scope: Scope, where: string): void {
     const t = this.expr(e, scope);
@@ -340,6 +392,20 @@ class Checker implements CheckResult {
     this.report("badOperands", pos, op, typeName(left), typeName(right));
     return BOOLEAN_OPS.has(op) ? BOOL : ERROR;
   }
+}
+
+function describeCallee(callee: Expr): string {
+  if (callee.kind === "name") return `la función '${callee.name}'`;
+  if (callee.kind === "member") return `el método '${callee.name}'`;
+  return "la función";
+}
+
+/** Retorno inferido: tipo común de todos los `return`; ninguno = void; incompatibles = desconocido. */
+function inferReturn(returns: Type[]): Type {
+  if (returns.length === 0) return VOID;
+  let t: Type | undefined = returns[0];
+  for (const r of returns.slice(1)) t = t && commonType(t, r);
+  return t ?? UNKNOWN;
 }
 
 const INVALID_TARGET: Partial<Record<Expr["kind"], string>> = {

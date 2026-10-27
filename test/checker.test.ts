@@ -116,3 +116,40 @@ describe("checker: expresiones", () => {
     assert.deepEqual(codes("function f(): integer { return 1; } f() = 2;"), ["E204"]);
   });
 });
+
+describe("checker: funciones", () => {
+  it("valida return contra el tipo declarado", () => {
+    assert.deepEqual(codes("return 1;"), ["E304"]);
+    assert.deepEqual(codes('function f(): integer { return "a"; }'), ["E306"]);
+    assert.deepEqual(codes("function f(): integer { return; }"), ["E305"]);
+    assert.deepEqual(codes("function f(): float { return 3; }"), []);
+  });
+
+  it("infiere el retorno sin anotación", () => {
+    const r = analyze("function f() { if (true) { return 1; } return 2.5; } let v = f();");
+    assert.equal(r.table.symbols.find((s) => s.name === "v")!.type.tag, "float");
+    assert.deepEqual(codes("function g() { } let x = g();"), ["E215"]);
+  });
+
+  it("valida cantidad y tipo de argumentos", () => {
+    const decl = "function suma(a: integer, b: integer): integer { return a + b; }";
+    assert.deepEqual(codes(`${decl} suma(1);`), ["E301"]);
+    assert.deepEqual(codes(`${decl} suma(1, true);`), ["E302"]);
+    assert.deepEqual(codes(`${decl} let x: integer = suma(1, suma(2, 3));`), []);
+    assert.deepEqual(codes("let n = 1; n();"), ["E303"]);
+  });
+
+  it("admite recursión y funciones como valores", () => {
+    assert.deepEqual(
+      codes("function fact(n: integer): integer { if (n <= 1) { return 1; } return n * fact(n - 1); } print(fact(5));"),
+      [],
+    );
+    assert.deepEqual(
+      codes(
+        "function contador(inicio: integer) { let actual = inicio; function sig(): integer { actual = actual + 1; return actual; } return sig; }" +
+          " let paso = contador(1); let v: integer = paso();",
+      ),
+      [],
+    );
+  });
+});
