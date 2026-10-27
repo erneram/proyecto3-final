@@ -1,10 +1,10 @@
+import { buildCfg } from "../ir/cfg.js";
 import { classOf, type IrFunction, type Operand, type Quad } from "../ir/ir.js";
 import type { DataSection } from "./emit.js";
+import { isVariable, Registers, type Emitter } from "./regs.js";
 
-/** Registros de paso: el resultado de una instrucción se arma aquí antes de guardarse. */
-const W0 = "$t8";
-const W1 = "$t9";
-const F0 = "$f4";
+/** Cuádruplos que cierran su bloque saltando: vacían los registros ellos mismos antes del salto. */
+const JUMPS = new Set<Quad["op"]>(["goto", "if", "ifnot", "ret", "try"]);
 
 /**
  * Traduce una función del código intermedio a MIPS.
@@ -16,9 +16,10 @@ const F0 = "$f4";
  *   size-4($fp)          $ra
  * Los flotantes ocupan una palabra como cualquier otro valor.
  */
-export class FunctionEmitter {
+export class FunctionEmitter implements Emitter {
   readonly #out: string[] = [];
   readonly #size: number;
+  readonly regs: Registers;
   /** Contador para etiquetas internas de esta función. */
   #local = 0;
 
@@ -27,7 +28,27 @@ export class FunctionEmitter {
     readonly data: DataSection,
   ) {
     this.#size = 4 * (fn.slots.length + fn.temps.length) + 8;
+    this.#blocks = buildCfg(fn);
+    // Temporales que aparecen en un solo bloque: al salir de él ya no se usan.
+    const seenIn = new Map<number, Set<number>>();
+    for (const b of this.#blocks) {
+      for (const q of b.quads) {
+        for (const v of Object.values(q)) {
+          if (v && typeof v === "object" && "k" in v && v.k === "temp") {
+            const blocks = seenIn.get(v.id) ?? new Set();
+            seenIn.set(v.id, blocks.add(b.id));
+          }
+        }
+      }
+    }
+    this.regs = new Registers(
+      this,
+      (o) => this.classOf(o),
+      (v) => v.k === "temp" && seenIn.get(v.id)?.size === 1,
+    );
   }
+
+  readonly #blocks: ReturnType<typeof buildCfg>;
 
   emit(): string[] {
     this.#out.length = 0;
@@ -36,7 +57,14 @@ export class FunctionEmitter {
     this.ins("sw", "$ra", `${this.#size - 4}($sp)`);
     this.ins("sw", "$fp", `${this.#size - 8}($sp)`);
     this.ins("move", "$fp", "$sp");
-    for (const q of this.fn.body) this.quad(q);
+    for (const block of this.#blocks) {
+      this.regs.reset();
+      for (const q of block.quads) {
+        this.regs.begin();
+        this.quad(q);
+      }
+      if (!JUMPS.has(block.quads.at(-1)!.op)) this.regs.flush("block");
+    }
     return this.#out;
   }
 
@@ -68,32 +96,23 @@ export class FunctionEmitter {
     }
   }
 
-  isFloat(o: Operand): boolean {
-    return classOf(o, this.fn, this.data.module) === "float";
+  classOf(o: Operand): "word" | "float" {
+    return classOf(o, this.fn, this.data.module);
   }
 
-  /** Carga un valor de palabra (entero, booleano, puntero) en `reg`. */
-  loadWord(o: Operand, reg: string): string {
-    if (o.k === "int") this.ins("li", reg, o.value);
-    else if (o.k === "str") this.ins("la", reg, this.data.string(o.value));
-    else if (o.k === "float") this.ins("lw", reg, this.data.float(o.value));
-    else this.ins("lw", reg, this.home(o));
-    return reg;
+  constant(o: Operand, reg: string): void {
+    const float = reg.startsWith("$f");
+    if (o.k === "str") this.ins("la", reg, this.data.string(o.value));
+    else if (o.k === "int" && !float) this.ins("li", reg, o.value);
+    else if (o.k === "int" || o.k === "float") this.ins(float ? "lwc1" : "lw", reg, this.data.float(o.value));
+    else throw new Error(`${o.k} no es una constante`);
   }
 
-  loadFloat(o: Operand, reg: string): string {
-    if (o.k === "float" || o.k === "int") this.ins("lwc1", reg, this.data.float(o.value));
-    else if (o.k === "str") throw new Error("Una cadena no es un valor flotante");
-    else this.ins("lwc1", reg, this.home(o));
-    return reg;
-  }
-
-  storeWord(reg: string, o: Operand): void {
-    this.ins("sw", reg, this.home(o));
-  }
-
-  storeFloat(reg: string, o: Operand): void {
-    this.ins("swc1", reg, this.home(o));
+  /** Deja el valor de `o` en un registro fijo (argumento de syscall o de llamada, retorno). */
+  into(o: Operand, reg: string): void {
+    if (!isVariable(o)) return this.constant(o, reg);
+    const from = this.regs.read(o);
+    if (from !== reg) this.ins(reg.startsWith("$f") ? "mov.s" : "move", reg, from);
   }
 
   // ---------- Cuádruplos ----------
@@ -103,16 +122,18 @@ export class FunctionEmitter {
       case "label":
         this.label(q.name);
         return;
-      case "mov":
-        if (this.isFloat(q.dst)) this.storeFloat(this.loadFloat(q.a, F0), q.dst);
-        else this.storeWord(this.loadWord(q.a, W0), q.dst);
+      case "mov": {
+        if (!isVariable(q.dst)) throw new Error("Destino de mov no asignable");
+        // Copia sin instrucción: el destino pasa a compartir el registro del origen.
+        this.regs.assign(q.dst, this.regs.read(q.a));
         return;
+      }
       case "print":
         this.print(q);
         return;
       case "ret":
-        if (q.a && this.isFloat(q.a)) this.loadFloat(q.a, "$f0");
-        else if (q.a) this.loadWord(q.a, "$v0");
+        if (q.a) this.into(q.a, this.classOf(q.a) === "float" ? "$f0" : "$v0");
+        this.regs.flush("globals");
         this.ins("lw", "$ra", `${this.#size - 4}($fp)`);
         this.ins("lw", "$fp", `${this.#size - 8}($fp)`);
         this.ins("addiu", "$sp", "$sp", this.#size);
@@ -127,19 +148,19 @@ export class FunctionEmitter {
   print(q: Extract<Quad, { op: "print" }>): void {
     switch (q.format) {
       case "int":
-        this.loadWord(q.a, "$a0");
+        this.into(q.a, "$a0");
         this.syscall(1);
         break;
       case "float":
-        this.loadFloat(q.a, "$f12");
+        this.into(q.a, "$f12");
         this.syscall(2);
         break;
       case "string":
-        this.loadWord(q.a, "$a0");
+        this.into(q.a, "$a0");
         this.syscall(4);
         break;
       case "bool": {
-        const value = this.loadWord(q.a, W1);
+        const value = this.regs.read(q.a);
         const done = this.localLabel();
         this.ins("la", "$a0", this.data.string("true"));
         this.ins("bnez", value, done);
