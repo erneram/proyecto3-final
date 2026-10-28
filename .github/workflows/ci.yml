@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Caché de MARS
+        uses: actions/cache@v6
+        with:
+          path: tools/Mars4_5.jar
+          key: mars-4.5.1
+
+      # `prepare` genera el parser con antlr-ng.
+      - name: Dependencias del compilador
+        run: npm ci
+
+      - name: Descargar MARS
+        run: npm run mars:setup
+
+      - name: Tipos
+        run: npm run check
+
+      # Con REQUIRE_MARS=1 las pruebas de ejecución no se pueden omitir.
+      - name: Pruebas
+        run: npm test
+        env:
+          REQUIRE_MARS: "1"
+
+      - name: Dependencias de la IDE
+        run: npm ci --prefix web
+
+      - name: Compilar la IDE
+        run: npm run build
