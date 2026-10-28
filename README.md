@@ -64,7 +64,7 @@ npm run dev          # servidor de desarrollo de Vite
 npm run build        # compila la IDE en web/dist
 ```
 
-La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com/educlopez/thegridcn-ui) con el tema Tron (primario `#00D4FF`). El editor es CodeMirror 6 con resaltado de Compiscript. El programa se compila en un Web Worker mientras se escribe, y los errores aparecen subrayados en el editor y en el panel de problemas. Los demás paneles muestran tokens, AST, ámbitos, tabla de símbolos, código de tres direcciones, bloques básicos y MIPS. El botón `.asm` descarga el ensamblador, y `⌘K` (o `Ctrl+K`) abre los ejemplos.
+La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com/educlopez/thegridcn-ui) con el tema Tron (primario `#00D4FF`). El editor es CodeMirror 6 con resaltado de Compiscript. El programa se compila en un Web Worker mientras se escribe, y los errores aparecen subrayados en el editor y en el panel de problemas. Los demás paneles muestran tokens, AST, ámbitos, tabla de símbolos, código de tres direcciones, bloques básicos y MIPS. El divisor entre editor y resultados se arrastra (o se mueve con las flechas) para cambiar sus anchos. El botón `.asm` descarga el ensamblador, y `Ejemplos` (o `⌘K` / `Ctrl+K`) abre un panel lateral con los ejemplos agrupados por tipo y un filtro.
 
 ## Ejemplos
 

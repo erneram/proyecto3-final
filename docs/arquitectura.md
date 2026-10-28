@@ -268,7 +268,7 @@ después de `j`/`jr` hasta la siguiente etiqueta.
   última tecla, y las respuestas de versiones viejas se descartan. Los paneles
   muestran problemas (también marcados en el editor), tokens, AST, ámbitos,
   símbolos, TAC, CFG y MIPS. Se puede descargar el `.asm` y cargar cualquier
-  programa de `examples/` (⌘K).
+  programa de `examples/` desde un panel lateral (⌘K).
 
 ## Pruebas
 

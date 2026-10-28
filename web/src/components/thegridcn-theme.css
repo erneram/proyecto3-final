@@ -24,28 +24,30 @@
   --radius: 0.5rem;
 }
 
-/* Base styles */
-* {
-  outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
-  border-color: var(--border);
-}
+/* Base: en la capa base para que las utilidades de Tailwind (border-*, tracking-*) la puedan sobrescribir. */
+@layer base {
+  * {
+    outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
+    border-color: var(--border);
+  }
 
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color: var(--foreground);
-  background-color: var(--background);
-}
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: var(--foreground);
+    background-color: var(--background);
+  }
 
-/* Heading styles */
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  /* Heading styles */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
 }
 
 

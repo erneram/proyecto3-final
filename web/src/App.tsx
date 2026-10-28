@@ -1,12 +1,12 @@
 import { Download, FileCode } from "lucide-react";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { CodeEditor } from "@/CodeEditor";
 import { ProblemsPanel } from "@/ProblemsPanel";
 import { Splitter } from "@/Splitter";
-import { EXAMPLES } from "@/examples";
+import type { Example } from "@/examples";
+import { ExamplesNav } from "@/ExamplesNav";
 import { BackendStats, CodePanel, Empty, OutlineTree, SymbolsPanel, TokensPanel } from "@/panels";
 import { useCompiler } from "@/useCompiler";
-import { CommandMenu } from "@/components/thegridcn/command-menu";
 import { HUDFrame } from "@/components/thegridcn/hud-frame";
 import { StatusBar } from "@/components/thegridcn/status-bar";
 import { UplinkHeader } from "@/components/thegridcn/uplink-header";
@@ -36,15 +36,28 @@ print(factorial(5));
 /** Marco de la IDE: cabecera, editor a la izquierda, resultados a la derecha y barra de estado. */
 export function App() {
   const [source, setSource] = useState(INITIAL_SOURCE);
-  const [fileName, setFileName] = useState("programa");
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [example, setExample] = useState<Example | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
   const [split, setSplit] = useState(50);
   const lines = source.split("\n").length;
+  const fileName = example?.name ?? "programa";
   const { reply, busy } = useCompiler(source);
   const diagnostics = reply?.diagnostics ?? NO_DIAGNOSTICS;
   const errors = diagnostics.filter((d) => d.severity === "error").length;
   const warnings = diagnostics.length - errors;
   const status = busy ? "Compilando…" : errors ? `${errors} errores` : "Sin errores";
+
+  // ⌘K / Ctrl+K abre y cierra el panel de ejemplos.
+  useEffect(() => {
+    const toggle = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setNavOpen((open) => !open);
+      }
+    };
+    addEventListener("keydown", toggle);
+    return () => removeEventListener("keydown", toggle);
+  }, []);
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -52,7 +65,7 @@ export function App() {
       <header className="flex items-baseline justify-between gap-4 px-6 py-4">
         <h1 className="font-heading text-lg tracking-[0.3em] text-primary">Compiscript</h1>
         <div className="flex items-center gap-2">
-          <button type="button" className={BUTTON} onClick={() => setMenuOpen(true)}>
+          <button type="button" className={BUTTON} onClick={() => setNavOpen(true)}>
             <FileCode className="size-3.5" />
             Ejemplos
             <kbd className="text-muted-foreground">⌘K</kbd>
@@ -68,19 +81,15 @@ export function App() {
           </button>
         </div>
       </header>
-      <CommandMenu
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        label="Ejemplos"
-        placeholder="Buscar ejemplo…"
-        items={EXAMPLES.map((e) => ({
-          label: e.name,
-          group: e.group,
-          onSelect: () => {
-            setSource(e.source);
-            setFileName(e.name);
-          },
-        }))}
+      <ExamplesNav
+        open={navOpen}
+        onOpenChange={setNavOpen}
+        current={example}
+        onSelect={(e) => {
+          setExample(e);
+          setSource(e.source);
+          setNavOpen(false);
+        }}
       />
       <main
         className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] lg:gap-0"

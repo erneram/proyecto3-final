@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 @import "./components/thegridcn-theme.css";
 
 /* La IDE solo tiene tema oscuro: `dark:` aplica siempre bajo data-theme="tron", sin depender del sistema. */
