@@ -275,7 +275,7 @@ después de `j`/`jr` hasta la siguiente etiqueta.
 `npm test` corre `node --test` con `tsx` sobre `test/*.test.ts`:
 
 - frontend, tipos, ámbitos, catálogo y checker con programas pequeños, más
-  `examples/errors/{lexico,sintaxis,semantica}/*` y `examples/lang/*`;
+  `examples/errors/{lexico,sintaxis,semantica,advertencias}/*` y `examples/lang/*`;
 - código intermedio: frames, traducción, CFG, y un intérprete del IR
   (`test/support/interp.ts`, con flotantes de 32 bits como MARS) que ejecuta
   programas y compara su salida;

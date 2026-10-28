@@ -17,4 +17,9 @@ describe("catálogo de diagnósticos", () => {
     assert.equal(CODES.argCount.message("la función 'f'", 2, 3), "La función 'f' espera 2 argumento(s), pero se pasaron 3.");
     assert.match(CODES.redeclared.message("x", 4), /línea 4/);
   });
+
+  it("contrae 'de el' y 'a el'", () => {
+    assert.equal(CODES.invalidTarget.message("el resultado de una llamada"), "No se puede asignar al resultado de una llamada.");
+    assert.match(CODES.notBoolean.message("el operador ternario", "integer"), /^La condición del operador ternario/);
+  });
 });

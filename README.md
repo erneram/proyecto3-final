@@ -93,7 +93,8 @@ La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com
 |---|---|---|
 | `lexico/` | caracteres desconocidos, cadenas sin cerrar, escapes inválidos | posiciones `línea:columna` |
 | `sintaxis/` | `;`, llaves y paréntesis faltantes o de más, expresiones incompletas | posiciones `línea:columna` |
-| `semantica/` | tipos, nombres, funciones, clases, arreglos y flujo | códigos (`E201 E202 …`) |
+| `semantica/` | tipos, nombres, ámbitos, asignaciones, funciones, clases, arreglos y flujo | códigos (`E201 E202 …`) |
+| `advertencias/` | código inalcanzable, retornos faltantes, variables sin valor; compilan y se ejecutan | códigos (`W501 …`) |
 
 ## Pruebas
 

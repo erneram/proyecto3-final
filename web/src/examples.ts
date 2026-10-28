@@ -10,6 +10,7 @@ const GROUP: Record<string, string> = {
   lexico: "Errores léxicos",
   sintaxis: "Errores sintácticos",
   semantica: "Errores semánticos",
+  advertencias: "Advertencias",
 };
 
 export interface Example {

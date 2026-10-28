@@ -36,8 +36,8 @@ describe("ejemplos con errores léxicos y sintácticos", () => {
   }
 });
 
-describe("ejemplos con errores semánticos", () => {
-  for (const file of files("examples/errors/semantica")) {
+describe("ejemplos con errores semánticos y advertencias", () => {
+  for (const file of [...files("examples/errors/semantica"), ...files("examples/errors/advertencias")]) {
     it(file, () => {
       // Declaran los códigos que el ejemplo debe producir.
       const found = [...new Set(analyze(file).map((d) => d.code!))].sort();

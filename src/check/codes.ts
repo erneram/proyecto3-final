@@ -10,10 +10,13 @@ type Entry<A extends unknown[]> = {
   message: (...args: A) => string;
 };
 
+/** Contracciones obligatorias: los datos pueden empezar con "el" ("de el" → "del", "a el" → "al"). */
+const contract = (text: string): string => text.replace(/\bde el /g, "del ").replace(/\ba el /g, "al ");
+
 const entry = <A extends unknown[]>(code: string, title: string, message: (...args: A) => string): Entry<A> => ({
   code,
   title,
-  message,
+  message: (...args) => contract(message(...args)),
 });
 
 export const CODES = {
