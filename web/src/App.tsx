@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodeEditor } from "@/CodeEditor";
 import { HUDFrame } from "@/components/thegridcn/hud-frame";
 import { StatusBar } from "@/components/thegridcn/status-bar";
 import { UplinkHeader } from "@/components/thegridcn/uplink-header";
@@ -25,13 +26,7 @@ export function App() {
       </header>
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-2">
         <HUDFrame label="Editor" className="flex min-h-0 flex-col p-4 pt-5">
-          <textarea
-            aria-label="Código fuente"
-            spellCheck={false}
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            className="min-h-0 flex-1 resize-none bg-transparent font-mono text-sm leading-6 text-foreground outline-none"
-          />
+          <CodeEditor value={source} onChange={setSource} />
         </HUDFrame>
         <HUDFrame label="Resultados" className="flex min-h-0 flex-col p-4 pt-5">
           <p className="font-mono text-sm text-muted-foreground">Sin compilar todavía.</p>
