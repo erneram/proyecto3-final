@@ -1,7 +1,8 @@
 import { Download, FileCode } from "lucide-react";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { CodeEditor } from "@/CodeEditor";
 import { ProblemsPanel } from "@/ProblemsPanel";
+import { Splitter } from "@/Splitter";
 import { EXAMPLES } from "@/examples";
 import { BackendStats, CodePanel, Empty, OutlineTree, SymbolsPanel, TokensPanel } from "@/panels";
 import { useCompiler } from "@/useCompiler";
@@ -37,6 +38,7 @@ export function App() {
   const [source, setSource] = useState(INITIAL_SOURCE);
   const [fileName, setFileName] = useState("programa");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [split, setSplit] = useState(50);
   const lines = source.split("\n").length;
   const { reply, busy } = useCompiler(source);
   const diagnostics = reply?.diagnostics ?? NO_DIAGNOSTICS;
@@ -80,10 +82,14 @@ export function App() {
           },
         }))}
       />
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-2">
+      <main
+        className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] lg:gap-0"
+        style={{ "--left": `${split}fr`, "--right": `${100 - split}fr` } as CSSProperties}
+      >
         <HUDFrame label="Editor" className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
           <CodeEditor value={source} onChange={setSource} diagnostics={diagnostics} />
         </HUDFrame>
+        <Splitter value={split} onChange={setSplit} />
         <HUDFrame label="Resultados" className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
           <Tabs defaultValue="problems" className="min-h-0 flex-1">
             <TabsList className="h-auto w-full flex-wrap">
