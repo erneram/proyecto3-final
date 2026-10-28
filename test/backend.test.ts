@@ -97,3 +97,54 @@ describe("MIPS: aritmética, comparaciones y saltos en MARS", { skip: skipMars }
     );
   });
 });
+
+describe("MIPS: llamadas en MARS", { skip: skipMars }, () => {
+  it("recursión y funciones mutuamente recursivas", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        function fact(n: integer): integer { if (n <= 1) { return 1; } return n * fact(n - 1); }
+        function fib(n: integer): integer { if (n < 2) { return n; } return fib(n - 1) + fib(n - 2); }
+        function par(n: integer): boolean { if (n == 0) { return true; } return impar(n - 1); }
+        function impar(n: integer): boolean { if (n == 0) { return false; } return par(n - 1); }
+        print(fact(5)); print(fib(10)); print(par(7));
+      `),
+      ["120", "55", "false"],
+    );
+  });
+
+  it("argumentos flotantes, anidados y retorno convertido", () => {
+    assert.deepEqual(
+      sameAsInterpreter("function f(a: float, b: float): float { return a + b; } function tres(): float { return 3; } let n = 2; print(f(n, f(n, n))); print(tres());"),
+      ["6.0", "3.0"],
+    );
+  });
+
+  it("más de cuatro argumentos pasan por la pila", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        function mezcla(a: integer, b: float, c: integer, d: float, e: integer, f: float, g: integer): float {
+          return a + b + c + d + e * 10 + f * 100 + g * 1000;
+        }
+        print(mezcla(1, 0.5, 2, 0.25, 3, 4.5, 5));
+      `),
+      ["5483.75"],
+    );
+  });
+
+  it("los valores vivos sobreviven a la llamada y las globales que cambia se ven después", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        let total = 0;
+        function suma(a: integer, b: integer): integer { total = total + a + b; return a + b; }
+        function nada() { print("nada"); }
+        let a = 2;
+        print(a * 3 + suma(a, 1));
+        nada();
+        print(total);
+        for (let i = 0; i < 3; i = i + 1) { suma(i, i); }
+        print(total);
+      `),
+      ["9", "nada", "3", "9"],
+    );
+  });
+});

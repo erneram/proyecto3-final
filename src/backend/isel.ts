@@ -18,6 +18,9 @@ const FLOAT_COMPARE: Partial<Record<FloatOp, { cond: string; swap: boolean }>> =
   fgt: { cond: "lt", swap: true }, fge: { cond: "le", swap: true },
   feq: { cond: "eq", swap: false }, fne: { cond: "eq", swap: false },
 };
+/** Los primeros argumentos van en registros; los flotantes, como bits crudos. */
+const ARG_REGS = ["$a0", "$a1", "$a2", "$a3"];
+
 const fitsImmediate = (o: Operand): o is { k: "int"; value: number } => o.k === "int" && o.value >= -32768 && o.value <= 32767;
 
 /**
@@ -36,6 +39,8 @@ export class FunctionEmitter implements Emitter {
   readonly regs: Registers;
   /** Contador para etiquetas internas de esta función. */
   #local = 0;
+  /** Argumentos de la próxima llamada, en orden. */
+  readonly #pending: Operand[] = [];
 
   constructor(
     readonly fn: IrFunction,
@@ -71,6 +76,16 @@ export class FunctionEmitter implements Emitter {
     this.ins("sw", "$ra", `${this.#size - 4}($sp)`);
     this.ins("sw", "$fp", `${this.#size - 8}($sp)`);
     this.ins("move", "$fp", "$sp");
+    // Los parámetros pasan a sus slots: de $a0–$a3 o de la zona que dejó quien llamó, justo encima del marco.
+    for (let i = 0; i < this.fn.params; i++) {
+      if (i < ARG_REGS.length) {
+        this.ins("sw", ARG_REGS[i]!, `${4 * i}($fp)`);
+      } else {
+        this.ins("lw", "$t8", `${this.#size + 4 * (i - ARG_REGS.length)}($fp)`);
+        this.ins("sw", "$t8", `${4 * i}($fp)`);
+      }
+    }
+    if (this.fn.envParam !== undefined) this.ins("sw", "$v1", `${4 * this.fn.envParam}($fp)`);
     for (const block of this.#blocks) {
       this.regs.reset();
       for (const q of block.quads) {
@@ -126,7 +141,34 @@ export class FunctionEmitter implements Emitter {
   into(o: Operand, reg: string): void {
     if (!isVariable(o)) return this.constant(o, reg);
     const from = this.regs.read(o);
-    if (from !== reg) this.ins(reg.startsWith("$f") ? "mov.s" : "move", reg, from);
+    const toFloat = reg.startsWith("$f");
+    const fromFloat = from.startsWith("$f");
+    if (from === reg) return;
+    if (toFloat === fromFloat) this.ins(toFloat ? "mov.s" : "move", reg, from);
+    else this.ins(toFloat ? "mtc1" : "mfc1", toFloat ? from : reg, toFloat ? reg : from);
+  }
+
+  /**
+   * Coloca los argumentos (de $a0 a $a3 y el resto en la pila), guarda todo lo
+   * modificado y salta. La llamada pisa los registros temporales, así que al
+   * volver no se confía en ninguno.
+   */
+  call(target: string, argc: number, dst: Operand | undefined): void {
+    const args = this.#pending.splice(this.#pending.length - argc, argc);
+    const extra = Math.max(0, argc - ARG_REGS.length);
+    if (extra) this.ins("addiu", "$sp", "$sp", -4 * extra);
+    args.slice(ARG_REGS.length).forEach((a, i) => {
+      const r = this.regs.read(a);
+      this.ins(r.startsWith("$f") ? "swc1" : "sw", r, `${4 * i}($sp)`);
+    });
+    args.slice(0, ARG_REGS.length).forEach((a, i) => this.into(a, ARG_REGS[i]!));
+    this.regs.flush("all");
+    this.ins("jal", target);
+    if (extra) this.ins("addiu", "$sp", "$sp", 4 * extra);
+    this.regs.reset();
+    if (!dst) return;
+    const float = this.classOf(dst) === "float";
+    this.ins(float ? "mov.s" : "move", this.write(dst), float ? "$f0" : "$v0");
   }
 
   // ---------- Cuádruplos ----------
@@ -214,6 +256,12 @@ export class FunctionEmitter implements Emitter {
         this.ins(q.op === "if" ? "bnez" : "beqz", a, q.target);
         return;
       }
+      case "param":
+        this.#pending.push(q.a);
+        return;
+      case "call":
+        this.call(q.fn, q.argc, q.dst);
+        return;
       case "ret":
         if (q.a) this.into(q.a, this.classOf(q.a) === "float" ? "$f0" : "$v0");
         this.regs.flush("globals");
