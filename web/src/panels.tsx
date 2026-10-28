@@ -1,8 +1,11 @@
+import { useMemo } from "react";
 import type { OutlineNode } from "../../src/frontend/outline.js";
 import type { TokenInfo } from "../../src/frontend/parse.js";
 import { DataTable } from "@/components/thegridcn/data-table";
+import { StatCard } from "@/components/thegridcn/stat-card";
+import { Terminal } from "@/components/thegridcn/terminal";
 import { Badge } from "@/components/ui/badge";
-import type { SymbolRow } from "@/worker";
+import type { CompileReply, SymbolRow } from "@/worker";
 
 export function Empty({ children }: { children: string }) {
   return <p className="font-mono text-sm text-muted-foreground">{children}</p>;
@@ -80,5 +83,22 @@ export function SymbolsPanel({ symbols }: { symbols: SymbolRow[] }) {
         { key: "captured", label: "Capturado", render: (v) => (v ? <Badge variant="secondary">sí</Badge> : null) },
       ]}
     />
+  );
+}
+
+/** Salida de una etapa (TAC, CFG o MIPS) como terminal, sin efecto de máquina de escribir. */
+export function CodePanel({ title, code }: { title: string; code: string }) {
+  const lines = useMemo(() => code.split("\n").map((text) => ({ text })), [code]);
+  return <Terminal title={title} lines={lines} typewriter={false} bodyClassName="max-h-none whitespace-pre text-xs" />;
+}
+
+export function BackendStats({ stats }: { stats: NonNullable<CompileReply["stats"]> }) {
+  return (
+    <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+      <StatCard title="Funciones" value={String(stats.functions)} />
+      <StatCard title="Cuádruplos" value={String(stats.quads)} />
+      <StatCard title="Bloques básicos" value={String(stats.blocks)} />
+      <StatCard title="Líneas MIPS" value={String(stats.asmLines)} />
+    </div>
   );
 }

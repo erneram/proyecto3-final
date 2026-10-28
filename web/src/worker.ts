@@ -4,6 +4,9 @@ import { compile, type Compilation } from "../../src/compile.js";
 import type { Diagnostic } from "../../src/diagnostic.js";
 import { outline, type OutlineNode } from "../../src/frontend/outline.js";
 import type { TokenInfo } from "../../src/frontend/parse.js";
+import { buildCfg, printCfg } from "../../src/ir/cfg.js";
+import type { IrModule } from "../../src/ir/ir.js";
+import { printModule } from "../../src/ir/print.js";
 
 export interface CompileRequest {
   id: number;
@@ -21,6 +24,11 @@ export interface CompileReply {
   /** Ámbitos anidados con sus símbolos, si corrió el análisis semántico. */
   scopes?: OutlineNode;
   symbols?: SymbolRow[];
+  /** Código de tres direcciones, grafo de flujo y MIPS, si no hubo errores. */
+  tac?: string;
+  cfg?: string;
+  asm?: string;
+  stats?: { functions: number; quads: number; blocks: number; asmLines: number };
   /** Duración de la compilación en milisegundos. */
   ms: number;
 }
@@ -71,6 +79,20 @@ const symbolRows = (table: SymbolTable): SymbolRow[] =>
     captured: s.captured,
   }));
 
+function backend(ir: IrModule, asm: string): Pick<CompileReply, "tac" | "cfg" | "asm" | "stats"> {
+  return {
+    tac: printModule(ir),
+    cfg: ir.functions.map((fn) => printCfg(fn, ir)).join("\n\n"),
+    asm,
+    stats: {
+      functions: ir.functions.length,
+      quads: ir.functions.reduce((n, fn) => n + fn.body.filter((q) => q.op !== "label").length, 0),
+      blocks: ir.functions.reduce((n, fn) => n + buildCfg(fn).length, 0),
+      asmLines: asm.split("\n").length,
+    },
+  };
+}
+
 /** Compila fuera del hilo de la interfaz; un fallo interno se reporta como diagnóstico, no tumba la IDE. */
 addEventListener("message", (e: MessageEvent<CompileRequest>) => {
   const { id, source } = e.data;
@@ -87,6 +109,7 @@ addEventListener("message", (e: MessageEvent<CompileRequest>) => {
       ast: c.program && outline(c.program),
       scopes: c.checked && scopeTree(c.checked.table.root),
       symbols: c.checked && symbolRows(c.checked.table),
+      ...(c.ir && c.asm !== undefined && backend(c.ir, c.asm)),
       ms: 0,
     };
   } catch (err) {

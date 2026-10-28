@@ -1,8 +1,11 @@
+import { Download, FileCode } from "lucide-react";
 import { useState } from "react";
 import { CodeEditor } from "@/CodeEditor";
 import { ProblemsPanel } from "@/ProblemsPanel";
-import { Empty, OutlineTree, SymbolsPanel, TokensPanel } from "@/panels";
+import { EXAMPLES } from "@/examples";
+import { BackendStats, CodePanel, Empty, OutlineTree, SymbolsPanel, TokensPanel } from "@/panels";
 import { useCompiler } from "@/useCompiler";
+import { CommandMenu } from "@/components/thegridcn/command-menu";
 import { HUDFrame } from "@/components/thegridcn/hud-frame";
 import { StatusBar } from "@/components/thegridcn/status-bar";
 import { UplinkHeader } from "@/components/thegridcn/uplink-header";
@@ -10,6 +13,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const NO_DIAGNOSTICS: never[] = [];
+const NO_CODE = "Sin código: corrige los errores para generar código intermedio y MIPS.";
+const BUTTON =
+  "inline-flex items-center gap-2 rounded border border-primary/40 px-3 py-1.5 font-mono text-xs uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40";
+
+function download(name: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const INITIAL_SOURCE = `function factorial(n: integer): integer {
   if (n <= 1) { return 1; }
@@ -22,6 +35,8 @@ print(factorial(5));
 /** Marco de la IDE: cabecera, editor a la izquierda, resultados a la derecha y barra de estado. */
 export function App() {
   const [source, setSource] = useState(INITIAL_SOURCE);
+  const [fileName, setFileName] = useState("programa");
+  const [menuOpen, setMenuOpen] = useState(false);
   const lines = source.split("\n").length;
   const { reply, busy } = useCompiler(source);
   const diagnostics = reply?.diagnostics ?? NO_DIAGNOSTICS;
@@ -34,15 +49,44 @@ export function App() {
       <UplinkHeader leftText="COMPISCRIPT // IDE" rightText="MIPS32 · MARS 4.5" />
       <header className="flex items-baseline justify-between gap-4 px-6 py-4">
         <h1 className="font-heading text-lg tracking-[0.3em] text-primary">Compiscript</h1>
-        <span className="font-mono text-xs text-muted-foreground">fuente → código intermedio → MIPS</span>
+        <div className="flex items-center gap-2">
+          <button type="button" className={BUTTON} onClick={() => setMenuOpen(true)}>
+            <FileCode className="size-3.5" />
+            Ejemplos
+            <kbd className="text-muted-foreground">⌘K</kbd>
+          </button>
+          <button
+            type="button"
+            className={BUTTON}
+            disabled={!reply?.asm}
+            onClick={() => reply?.asm && download(`${fileName}.asm`, reply.asm)}
+          >
+            <Download className="size-3.5" />
+            {fileName}.asm
+          </button>
+        </div>
       </header>
+      <CommandMenu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        label="Ejemplos"
+        placeholder="Buscar ejemplo…"
+        items={EXAMPLES.map((e) => ({
+          label: e.name,
+          group: e.group,
+          onSelect: () => {
+            setSource(e.source);
+            setFileName(e.name);
+          },
+        }))}
+      />
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-2">
         <HUDFrame label="Editor" className="flex min-h-0 flex-col p-4 pt-5">
           <CodeEditor value={source} onChange={setSource} diagnostics={diagnostics} />
         </HUDFrame>
         <HUDFrame label="Resultados" className="flex min-h-0 flex-col p-4 pt-5">
           <Tabs defaultValue="problems" className="min-h-0 flex-1">
-            <TabsList className="w-full">
+            <TabsList className="h-auto w-full flex-wrap">
               <TabsTrigger value="problems">
                 Problemas
                 {diagnostics.length > 0 && (
@@ -55,6 +99,9 @@ export function App() {
               <TabsTrigger value="ast">AST</TabsTrigger>
               <TabsTrigger value="scopes">Ámbitos</TabsTrigger>
               <TabsTrigger value="symbols">Símbolos</TabsTrigger>
+              <TabsTrigger value="tac">TAC</TabsTrigger>
+              <TabsTrigger value="cfg">CFG</TabsTrigger>
+              <TabsTrigger value="mips">MIPS</TabsTrigger>
             </TabsList>
             <TabsContent value="problems" className="min-h-0 overflow-y-auto">
               <ProblemsPanel reply={reply} />
@@ -70,6 +117,22 @@ export function App() {
             </TabsContent>
             <TabsContent value="symbols" className="min-h-0 overflow-y-auto">
               {reply?.symbols ? <SymbolsPanel symbols={reply.symbols} /> : <Empty>Sin tabla de símbolos: el análisis semántico no corrió.</Empty>}
+            </TabsContent>
+            <TabsContent value="tac" className="flex min-h-0 flex-col gap-3 overflow-auto">
+              {reply?.tac && reply.stats ? (
+                <>
+                  <BackendStats stats={reply.stats} />
+                  <CodePanel title="Código de tres direcciones" code={reply.tac} />
+                </>
+              ) : (
+                <Empty>{NO_CODE}</Empty>
+              )}
+            </TabsContent>
+            <TabsContent value="cfg" className="min-h-0 overflow-auto">
+              {reply?.cfg ? <CodePanel title="Bloques básicos por función" code={reply.cfg} /> : <Empty>{NO_CODE}</Empty>}
+            </TabsContent>
+            <TabsContent value="mips" className="min-h-0 overflow-auto">
+              {reply?.asm ? <CodePanel title={`${fileName}.asm · MARS 4.5`} code={reply.asm} /> : <Empty>{NO_CODE}</Empty>}
             </TabsContent>
           </Tabs>
         </HUDFrame>
