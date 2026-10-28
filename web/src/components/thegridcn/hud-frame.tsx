@@ -4,11 +4,14 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 interface HUDFrameProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Clases del contenedor interno, para que el contenido herede la altura del marco. */
+  bodyClassName?: string;
   label?: string;
 }
 
 export function HUDFrame({
   label,
+  bodyClassName,
   children,
   className,
   ...props
@@ -48,7 +51,7 @@ export function HUDFrame({
         }}
       />
 
-      <div className="relative p-4">{children}</div>
+      <div className={cn("relative p-4", bodyClassName)}>{children}</div>
     </div>
   );
 }

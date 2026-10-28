@@ -81,10 +81,10 @@ export function App() {
         }))}
       />
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-2">
-        <HUDFrame label="Editor" className="flex min-h-0 flex-col p-4 pt-5">
+        <HUDFrame label="Editor" className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
           <CodeEditor value={source} onChange={setSource} diagnostics={diagnostics} />
         </HUDFrame>
-        <HUDFrame label="Resultados" className="flex min-h-0 flex-col p-4 pt-5">
+        <HUDFrame label="Resultados" className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
           <Tabs defaultValue="problems" className="min-h-0 flex-1">
             <TabsList className="h-auto w-full flex-wrap">
               <TabsTrigger value="problems">
