@@ -265,7 +265,10 @@ después de `j`/`jr` hasta la siguiente etiqueta.
 - **IDE** (`web/`): Vite, React 19 y Tailwind 4, con componentes de The GridCN
   y el tema Tron (primario `#00D4FF`). El editor es CodeMirror 6 con resaltado
   de Compiscript. Cada cambio se compila en un Web Worker 300 ms después de la
-  última tecla, y las respuestas de versiones viejas se descartan. Los paneles
+  última tecla, y las respuestas de versiones viejas se descartan. Si compila,
+  el mismo worker ejecuta el programa con el intérprete del código intermedio
+  (`src/ir/interp.ts`), con un límite de un millón de pasos; un error en
+  ejecución sin capturar aparece en el panel de problemas. Los paneles
   muestran problemas (también marcados en el editor), tokens, AST, ámbitos,
   símbolos, TAC, CFG y MIPS. Se puede descargar el `.asm` y cargar cualquier
   programa de `examples/` desde un panel lateral (⌘K).
@@ -277,7 +280,7 @@ después de `j`/`jr` hasta la siguiente etiqueta.
 - frontend, tipos, ámbitos, catálogo y checker con programas pequeños, más
   `examples/errors/{lexico,sintaxis,semantica,advertencias}/*` y `examples/lang/*`;
 - código intermedio: frames, traducción, CFG, y un intérprete del IR
-  (`test/support/interp.ts`, con flotantes de 32 bits como MARS) que ejecuta
+  (`src/ir/interp.ts`, con flotantes de 32 bits como MARS) que ejecuta
   programas y compara su salida;
 - backend: asignador, peephole y suites que ensamblan y ejecutan en MARS,
   comparando con el intérprete;

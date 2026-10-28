@@ -5,6 +5,7 @@ import type { Diagnostic } from "../../src/diagnostic.js";
 import { outline, type OutlineNode } from "../../src/frontend/outline.js";
 import type { TokenInfo } from "../../src/frontend/parse.js";
 import { buildCfg, printCfg } from "../../src/ir/cfg.js";
+import { runIr } from "../../src/ir/interp.js";
 import type { IrModule } from "../../src/ir/ir.js";
 import { printModule } from "../../src/ir/print.js";
 
@@ -31,6 +32,19 @@ export interface CompileReply {
   stats?: { functions: number; quads: number; blocks: number; asmLines: number };
   /** Duración de la compilación en milisegundos. */
   ms: number;
+  /** Ejecución del programa con el intérprete del código intermedio, si compiló. */
+  run?: RunResult;
+}
+
+export interface RunResult {
+  /** Últimas líneas impresas; con un error sin capturar, la última es su mensaje. */
+  output: string[];
+  /** Líneas anteriores que no se envían a la IDE. */
+  omitted: number;
+  uncaught?: string;
+  timedOut?: boolean;
+  /** Fallo interno del intérprete. */
+  error?: string;
 }
 
 export interface SymbolRow {
@@ -93,13 +107,32 @@ function backend(ir: IrModule, asm: string): Pick<CompileReply, "tac" | "cfg" | 
   };
 }
 
-/** Compila fuera del hilo de la interfaz; un fallo interno se reporta como diagnóstico, no tumba la IDE. */
+/** Límite de cuádruplos ejecutados: un ciclo infinito se detiene en vez de colgar el worker. */
+const MAX_STEPS = 1_000_000;
+// ponytail: solo se envían las últimas líneas; paginar si hace falta ver toda la salida.
+const MAX_LINES = 1000;
+
+function execute(ir: IrModule): RunResult {
+  try {
+    const { output, uncaught, timedOut } = runIr(ir, MAX_STEPS);
+    return { output: output.slice(-MAX_LINES), omitted: Math.max(0, output.length - MAX_LINES), uncaught, timedOut };
+  } catch (err) {
+    return { output: [], omitted: 0, error: `Error interno del intérprete: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/**
+ * Compila fuera del hilo de la interfaz y, si no hubo errores, ejecuta el programa.
+ * Un fallo interno se reporta como diagnóstico, no tumba la IDE.
+ */
 addEventListener("message", (e: MessageEvent<CompileRequest>) => {
   const { id, source } = e.data;
   const start = performance.now();
   let reply: CompileReply;
+  let ir: IrModule | undefined;
   try {
     const c = compile(source);
+    ir = c.ir;
     reply = {
       id,
       ok: c.ok,
@@ -117,5 +150,6 @@ addEventListener("message", (e: MessageEvent<CompileRequest>) => {
     reply = { id, ok: false, diagnostics: [{ phase: "backend", severity: "error", line: 1, column: 1, message }], tokens: [], ms: 0 };
   }
   reply.ms = performance.now() - start;
+  if (ir) reply.run = execute(ir);
   postMessage(reply);
 });

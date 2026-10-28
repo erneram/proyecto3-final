@@ -1,7 +1,7 @@
 import { Download, FileCode } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { CodeEditor } from "@/CodeEditor";
-import { ProblemsPanel } from "@/ProblemsPanel";
+import { ProblemsPanel, runProblem } from "@/ProblemsPanel";
 import { Splitter } from "@/Splitter";
 import type { Example } from "@/examples";
 import { ExamplesNav } from "@/ExamplesNav";
@@ -46,7 +46,9 @@ export function App() {
   const diagnostics = reply?.diagnostics ?? NO_DIAGNOSTICS;
   const errors = diagnostics.filter((d) => d.severity === "error").length;
   const warnings = diagnostics.length - errors;
-  const status = busy ? "Compilando…" : errors ? `${errors} errores` : "Sin errores";
+  const failed = runProblem(reply?.run);
+  const problems = diagnostics.length + (failed ? 1 : 0);
+  const status = busy ? "Compilando…" : errors ? `${errors} errores` : (failed?.title ?? "Sin errores");
 
   // ⌘K / Ctrl+K abre y cierra el panel de ejemplos.
   useEffect(() => {
@@ -109,9 +111,9 @@ export function App() {
             <TabsList className="h-auto w-full flex-wrap">
               <TabsTrigger value="problems">
                 Problemas
-                {diagnostics.length > 0 && (
-                  <Badge variant={errors ? "destructive" : "secondary"} className="px-1.5 py-0">
-                    {diagnostics.length}
+                {problems > 0 && (
+                  <Badge variant={errors || failed ? "destructive" : "secondary"} className="px-1.5 py-0">
+                    {problems}
                   </Badge>
                 )}
               </TabsTrigger>
@@ -160,7 +162,7 @@ export function App() {
       <StatusBar
         leftContent={
           <>
-            <span className={errors && !busy ? "text-destructive" : undefined}>{status}</span>
+            <span className={(errors || failed) && !busy ? "text-destructive" : undefined}>{status}</span>
             {warnings > 0 && <span>{warnings} advertencias</span>}
           </>
         }

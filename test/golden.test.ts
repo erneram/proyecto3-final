@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { marsAvailable, runMars } from "../scripts/mars.js";
 import { compile } from "../src/compile.js";
-import { runIr } from "./support/interp.js";
+import { runIr } from "../src/ir/interp.js";
 
 /**
  * Cada `examples/run/X.cps` y `examples/errors/ejecucion/X.cps` trae al lado

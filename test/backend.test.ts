@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { marsAvailable, runMars } from "../scripts/mars.js";
 import { generate } from "../src/backend/emit.js";
 import { compile } from "../src/compile.js";
-import { RUNTIME_ERRORS, runIr } from "./support/interp.js";
+import { RUNTIME_ERRORS, runIr } from "../src/ir/interp.js";
 
 function asm(src: string): string {
   const { ir, diagnostics } = compile(src);

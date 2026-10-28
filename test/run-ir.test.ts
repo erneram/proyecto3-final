@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { compile } from "../src/compile.js";
-import { RUNTIME_ERRORS, runIr, type IrRun } from "./support/interp.js";
+import { RUNTIME_ERRORS, runIr, type IrRun } from "../src/ir/interp.js";
 
 function run(src: string): IrRun {
   const r = compile(src);
@@ -32,6 +32,13 @@ describe("ejecución del código intermedio", () => {
 
     it("do-while corre al menos una vez", () => {
       prints("let i = 10; do { print(i); i = i + 1; } while (i < 3);", "10");
+    });
+
+    it("un ciclo infinito se detiene al pasar el límite de pasos y conserva lo impreso", () => {
+      const r = compile("let i = 0; while (true) { print(i); i = i + 1; }");
+      const result = runIr(r.ir!, 100);
+      assert.equal(result.timedOut, true);
+      assert.deepEqual(result.output.slice(0, 3), ["0", "1", "2"]);
     });
 
     it("switch cae al siguiente caso hasta un break", () => {
@@ -166,7 +173,7 @@ describe("ejecución del código intermedio", () => {
 
 describe("formato de flotantes como MARS", () => {
   it("usa los dígitos más cortos del float de 32 bits y notación científica fuera de rango", async () => {
-    const { formatFloat } = await import("./support/interp.js");
+    const { formatFloat } = await import("../src/ir/interp.js");
     const f = Math.fround;
     assert.deepEqual(
       [f(1 / 3), f(0.1) + f(0.2), 1e8, 0.001, 0.0001, 4, -0.5, 1234567, 12345678, 0].map((v) => formatFloat(f(v))),

@@ -1,11 +1,12 @@
-import { RUNTIME_ERRORS } from "../../src/backend/runtime.js";
-import type { ClassLayout, IrFunction, IrModule, Operand } from "../../src/ir/ir.js";
+import { RUNTIME_ERRORS } from "../backend/runtime.js";
+import type { ClassLayout, IrFunction, IrModule, Operand } from "./ir.js";
 
 export { RUNTIME_ERRORS };
 
 /**
- * Intérprete del código de tres direcciones, solo para pruebas: permite verificar
- * qué imprime un programa sin pasar por el backend ni por MARS.
+ * Intérprete del código de tres direcciones. Las pruebas lo usan para verificar
+ * qué imprime un programa sin pasar por el backend ni por MARS, y la IDE para
+ * ejecutar el programa en el navegador.
  */
 
 interface Closure {
@@ -19,11 +20,14 @@ interface ArrayRef {
 type Value = number | string | Value[] | Closure | ArrayRef | ClassLayout;
 
 class Fault extends Error {}
+class StepLimit extends Error {}
 
 export interface IrRun {
   output: string[];
   /** Mensaje del error que nadie capturó, si lo hubo. */
   uncaught?: string;
+  /** El programa pasó de `maxSteps` cuádruplos ejecutados y se detuvo. */
+  timedOut?: boolean;
 }
 
 /**
@@ -126,7 +130,7 @@ export function runIr(m: IrModule, maxSteps = 1_000_000): IrRun {
 
     let pc = 0;
     while (pc < fn.body.length) {
-      if (++steps > maxSteps) throw new Error("El programa no terminó");
+      if (++steps > maxSteps) throw new StepLimit();
       const q = fn.body[pc++]!;
       try {
         switch (q.op) {
@@ -302,6 +306,7 @@ export function runIr(m: IrModule, maxSteps = 1_000_000): IrRun {
   try {
     invoke("main", [], 0);
   } catch (e) {
+    if (e instanceof StepLimit) return { output, timedOut: true };
     if (!(e instanceof Fault)) throw e;
     output.push(e.message);
     return { output, uncaught: e.message };

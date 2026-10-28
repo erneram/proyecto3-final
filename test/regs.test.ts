@@ -4,7 +4,7 @@ import { marsAvailable, runMars } from "../scripts/mars.js";
 import { generate } from "../src/backend/emit.js";
 import { compile } from "../src/compile.js";
 import type { IrModule, Operand, Quad, ValueClass } from "../src/ir/ir.js";
-import { runIr } from "./support/interp.js";
+import { runIr } from "../src/ir/interp.js";
 
 const slot = (index: number): Operand => ({ k: "slot", index });
 const temp = (id: number): Operand => ({ k: "temp", id });
