@@ -360,3 +360,17 @@ describe("generación: try/catch", () => {
     assert.deepEqual(after("e = t2", 2), ["endtry", "goto L0"]);
   });
 });
+
+describe("generación: literales de arreglo con tipo destino", () => {
+  it("un literal entero guardado como float[] se construye con elementos float, también anidado", () => {
+    assert.deepEqual(mainBody("let a: float[][] = [[1], [2]];").slice(0, 7), [
+      "t0 = newarray 2",
+      "t1 = newarray 1",
+      "t1{0} = 1.0",
+      "t0{0} = t1",
+      "t2 = newarray 1",
+      "t2{0} = 2.0",
+      "t0{1} = t2",
+    ]);
+  });
+});

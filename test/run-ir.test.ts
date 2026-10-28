@@ -163,3 +163,14 @@ describe("ejecución del código intermedio", () => {
     });
   });
 });
+
+describe("formato de flotantes como MARS", () => {
+  it("usa los dígitos más cortos del float de 32 bits y notación científica fuera de rango", async () => {
+    const { formatFloat } = await import("./support/interp.js");
+    const f = Math.fround;
+    assert.deepEqual(
+      [f(1 / 3), f(0.1) + f(0.2), 1e8, 0.001, 0.0001, 4, -0.5, 1234567, 12345678, 0].map((v) => formatFloat(f(v))),
+      ["0.33333334", "0.3", "1.0E8", "0.001", "1.0E-4", "4.0", "-0.5", "1234567.0", "1.2345678E7", "0.0"],
+    );
+  });
+});

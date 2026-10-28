@@ -473,7 +473,33 @@ class FunctionLowerer {
 
   /** Evalúa `e` y lo convierte al tipo destino (solo cambia algo de integer a float). */
   coerced(e: Expr, to: Type): Operand {
+    // Un literal de arreglo (o un ternario que lo elige) se construye ya con el tipo
+    // de destino: `[1, 2]` guardado en `float[]` debe tener elementos float en memoria.
+    if (e.kind === "array" && to.tag === "array") return this.arrayLiteral(e, to.elem);
+    if (e.kind === "ternary" && to.tag === "array") return this.ternary(e, to);
     return this.convert(this.expr(e), this.typeOf(e), to);
+  }
+
+  arrayLiteral(e: ExprOf<"array">, elem: Type): Operand {
+    const dst = this.temp("word");
+    this.emit({ op: "newarr", dst, length: { k: "int", value: e.items.length } });
+    e.items.forEach((item, i) => {
+      this.emit({ op: "aset", array: dst, index: { k: "int", value: i }, a: this.coerced(item, elem) });
+    });
+    return dst;
+  }
+
+  ternary(e: ExprOf<"ternary">, t: Type): Operand {
+    const dst = this.temp(classOfType(t));
+    const otherwise = this.m.label();
+    const end = this.m.label();
+    this.jump(e.cond, false, otherwise);
+    this.emit({ op: "mov", dst, a: this.coerced(e.then, t) });
+    this.emit({ op: "goto", target: end });
+    this.emit({ op: "label", name: otherwise });
+    this.emit({ op: "mov", dst, a: this.coerced(e.otherwise, t) });
+    this.emit({ op: "label", name: end });
+    return dst;
   }
 
   convert(value: Operand, from: Type, to: Type): Operand {
@@ -515,13 +541,7 @@ class FunctionLowerer {
         return this.call(e);
       case "array": {
         const t = this.typeOf(e);
-        const elem = t.tag === "array" ? t.elem : UNKNOWN;
-        const dst = this.temp("word");
-        this.emit({ op: "newarr", dst, length: { k: "int", value: e.items.length } });
-        e.items.forEach((item, i) => {
-          this.emit({ op: "aset", array: dst, index: { k: "int", value: i }, a: this.coerced(item, elem) });
-        });
-        return dst;
+        return this.arrayLiteral(e, t.tag === "array" ? t.elem : UNKNOWN);
       }
       case "index": {
         const array = this.expr(e.object);
@@ -539,19 +559,8 @@ class FunctionLowerer {
       }
       case "binary":
         return e.op === "&&" || e.op === "||" ? this.shortCircuit(e) : this.binary(e);
-      case "ternary": {
-        const t = this.typeOf(e);
-        const dst = this.temp(classOfType(t));
-        const otherwise = this.m.label();
-        const end = this.m.label();
-        this.jump(e.cond, false, otherwise);
-        this.emit({ op: "mov", dst, a: this.coerced(e.then, t) });
-        this.emit({ op: "goto", target: end });
-        this.emit({ op: "label", name: otherwise });
-        this.emit({ op: "mov", dst, a: this.coerced(e.otherwise, t) });
-        this.emit({ op: "label", name: end });
-        return dst;
-      }
+      case "ternary":
+        return this.ternary(e, this.typeOf(e));
     }
   }
 

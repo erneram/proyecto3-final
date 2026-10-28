@@ -26,7 +26,38 @@ export interface IrRun {
   uncaught?: string;
 }
 
-const formatFloat = (v: number): string => (Number.isInteger(v) ? v.toFixed(1) : String(v));
+/**
+ * Como `Float.toString` de Java (lo que imprime MARS): los dígitos más cortos que
+ * identifican al float de 32 bits, en notación decimal entre 10^-3 y 10^7 y
+ * científica (`1.0E8`) fuera de ese rango.
+ */
+export function formatFloat(v: number): string {
+  if (Number.isNaN(v)) return "NaN";
+  if (!Number.isFinite(v)) return v > 0 ? "Infinity" : "-Infinity";
+  if (v === 0) return Object.is(v, -0) ? "-0.0" : "0.0";
+  const sign = v < 0 ? "-" : "";
+  const abs = Math.abs(v);
+  let shortest = abs.toExponential(8);
+  for (let p = 0; p < 9; p++) {
+    const s = abs.toExponential(p);
+    if (Math.fround(Number(s)) === abs) {
+      shortest = s;
+      break;
+    }
+  }
+  const [mantissa, e] = shortest.split("e");
+  const digits = mantissa!.replace(".", "");
+  const exp = Number(e);
+  if (abs >= 1e-3 && abs < 1e7) {
+    if (exp < 0) return `${sign}0.${"0".repeat(-exp - 1)}${digits}`;
+    const int = digits.slice(0, exp + 1).padEnd(exp + 1, "0");
+    return `${sign}${int}.${digits.slice(exp + 1) || "0"}`;
+  }
+  return `${sign}${digits[0]}.${digits.slice(1) || "0"}E${exp}`;
+}
+
+/** Los flotantes del programa son de 32 bits, como en MARS. */
+const f32 = Math.fround;
 
 export function runIr(m: IrModule, maxSteps = 1_000_000): IrRun {
   const output: string[] = [];
@@ -65,8 +96,9 @@ export function runIr(m: IrModule, maxSteps = 1_000_000): IrRun {
         case "global":
           return globals[o.index]!;
         case "int":
-        case "float":
           return o.value;
+        case "float":
+          return f32(o.value);
         case "str":
           return o.value;
       }
@@ -116,16 +148,16 @@ export function runIr(m: IrModule, maxSteps = 1_000_000): IrRun {
             set(q.dst, q.op === "div" ? Math.trunc(num(q.a) / num(q.b)) | 0 : num(q.a) % num(q.b));
             break;
           case "fadd":
-            set(q.dst, num(q.a) + num(q.b));
+            set(q.dst, f32(num(q.a) + num(q.b)));
             break;
           case "fsub":
-            set(q.dst, num(q.a) - num(q.b));
+            set(q.dst, f32(num(q.a) - num(q.b)));
             break;
           case "fmul":
-            set(q.dst, num(q.a) * num(q.b));
+            set(q.dst, f32(num(q.a) * num(q.b)));
             break;
           case "fdiv":
-            set(q.dst, num(q.a) / num(q.b));
+            set(q.dst, f32(num(q.a) / num(q.b)));
             break;
           case "lt":
           case "flt":
@@ -165,7 +197,7 @@ export function runIr(m: IrModule, maxSteps = 1_000_000): IrRun {
             set(q.dst, get(q.a) === 0 ? 1 : 0);
             break;
           case "itof":
-            set(q.dst, num(q.a));
+            set(q.dst, f32(num(q.a)));
             break;
           case "label":
             break;
