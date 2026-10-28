@@ -322,3 +322,63 @@ describe("MIPS: objetos en MARS", { skip: skipMars }, () => {
     );
   });
 });
+
+describe("MIPS: clausuras en MARS", { skip: skipMars }, () => {
+  it("la función dueña y su clausura comparten estado; cada llamada crea un entorno nuevo", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        function f() { let n = 5; function inc(): integer { n = n + 1; return n; } print(inc()); print(n); print(inc()); print(inc()); }
+        f();
+        function hacer(inicio: integer) { let c = inicio; function sig(): integer { c = c + 1; return c; } return sig; }
+        let a = hacer(0); let b = hacer(10);
+        print(a()); print(b()); print(a());
+      `),
+      ["6", "6", "7", "8", "1", "11", "2"],
+    );
+  });
+
+  it("captura transitiva, captura de float y hermanas que comparten variable", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        function ext() { let x = 5; function medio() { function interior(): integer { return x; } print(interior()); x = x + 1; print(interior()); } medio(); }
+        ext();
+        function g() { let v = 2.5; function sube() { v = v + 1; } print(v); sube(); print(v); }
+        g();
+        function par() { let k = 1; function uno() { k = k + 1; } function dos(): integer { return k; } uno(); print(dos()); uno(); print(dos()); }
+        par();
+      `),
+      ["5", "6", "2.5", "3.5", "2", "3"],
+    );
+  });
+
+  it("clausura recursiva, función elevada, función devuelta y funciones como valores", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        function h(): integer { function suma(n: integer): integer { if (n == 0) { return 0; } return n + suma(n - 1); } return suma(3) + 1; }
+        print(h());
+        function k(): integer { return despues(); function despues(): integer { return 5; } }
+        print(k());
+        function sumador(x: integer) { function por(y: integer): integer { return x + y; } return por; }
+        print(sumador(4)(5));
+        function doble(n: integer): integer { return n * 2; }
+        function triple(n: integer): integer { return n * 3; }
+        let fs = [doble, triple];
+        print(fs[0](1) + fs[1](2));
+        function base(): integer { return 2; }
+        function hacer(n: integer) { function mas(): integer { return n + 3; } return mas; }
+        let elegida = true ? hacer(2) : base;
+        print(elegida());
+      `),
+      ["7", "5", "9", "8", "5"],
+    );
+  });
+
+  it("los métodos de una clase local usan las variables de la función", () => {
+    assert.deepEqual(
+      sameAsInterpreter(
+        "function f(): integer { let n = 1; class C { function inc(): integer { n = n + 1; return n; } } let c = new C(); c.inc(); return c.inc() + n; } print(f());",
+      ),
+      ["6"],
+    );
+  });
+});

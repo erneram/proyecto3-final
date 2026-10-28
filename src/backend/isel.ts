@@ -355,6 +355,39 @@ export class FunctionEmitter implements Emitter {
           return "$t9";
         });
         return;
+      case "callc":
+        // Clausura = {código, entorno}: el entorno viaja en $v1 y la función lo guarda al entrar.
+        this.call(q.argc, q.dst, () => {
+          const c = this.regs.read(q.closure);
+          this.failIf("beqz", [c], "nullObject");
+          this.ins("lw", "$t9", `0(${c})`);
+          this.ins("lw", "$v1", `4(${c})`);
+          return "$t9";
+        });
+        return;
+      case "closure": {
+        const env = q.env.k === "int" && q.env.value === 0 ? undefined : this.regs.read(q.env);
+        this.ins("li", "$a0", 8);
+        this.ins("li", "$v0", 9);
+        this.ins("syscall");
+        this.ins("la", "$t8", q.fn);
+        this.ins("sw", "$t8", "0($v0)");
+        if (env) this.ins("sw", env, "4($v0)");
+        this.ins("move", this.write(q.dst), "$v0");
+        return;
+      }
+      case "load": {
+        const base = this.regs.read(q.base);
+        const d = this.write(q.dst);
+        this.ins(d.startsWith("$f") ? "lwc1" : "lw", d, `${q.offset}(${base})`);
+        return;
+      }
+      case "store": {
+        const v = this.regs.read(q.a);
+        const base = this.regs.read(q.base);
+        this.ins(v.startsWith("$f") ? "swc1" : "sw", v, `${q.offset}(${base})`);
+        return;
+      }
       case "newobj": {
         const layout = this.data.module.classes.find((c) => c.label === q.cls)!;
         const env = q.env.k === "int" && q.env.value === 0 ? undefined : this.regs.read(q.env);
@@ -389,8 +422,6 @@ export class FunctionEmitter implements Emitter {
         this.ins("addiu", "$sp", "$sp", this.#size);
         this.ins("jr", "$ra");
         return;
-      default:
-        throw new Error(`Generación de MIPS pendiente para '${q.op}'`);
     }
   }
 
