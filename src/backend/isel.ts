@@ -158,20 +158,27 @@ export class FunctionEmitter implements Emitter {
 
   /**
    * Coloca los argumentos (de $a0 a $a3 y el resto en la pila), guarda todo lo
-   * modificado y salta. La llamada pisa los registros temporales, así que al
-   * volver no se confía en ninguno.
+   * modificado y salta a lo que devuelva `target`: una etiqueta o un registro con
+   * la dirección. La llamada pisa los registros temporales, así que al volver no
+   * se confía en ninguno.
    */
-  call(target: string, argc: number, dst: Operand | undefined): void {
+  call(argc: number, dst: Operand | undefined, target: () => string): void {
     const args = this.#pending.splice(this.#pending.length - argc, argc);
     const extra = Math.max(0, argc - ARG_REGS.length);
     if (extra) this.ins("addiu", "$sp", "$sp", -4 * extra);
     args.slice(ARG_REGS.length).forEach((a, i) => {
       const r = this.regs.read(a);
       this.ins(r.startsWith("$f") ? "swc1" : "sw", r, `${4 * i}($sp)`);
+      // Ya copiado: su registro puede volver a usarse para el siguiente argumento.
+      this.regs.begin();
     });
-    args.slice(0, ARG_REGS.length).forEach((a, i) => this.into(a, ARG_REGS[i]!));
+    args.slice(0, ARG_REGS.length).forEach((a, i) => {
+      this.into(a, ARG_REGS[i]!);
+      this.regs.begin();
+    });
+    const to = target();
     this.regs.flush("all");
-    this.ins("jal", target);
+    this.ins(to.startsWith("$") ? "jalr" : "jal", to);
     if (extra) this.ins("addiu", "$sp", "$sp", 4 * extra);
     this.regs.reset();
     if (!dst) return;
@@ -336,8 +343,44 @@ export class FunctionEmitter implements Emitter {
         this.#pending.push(q.a);
         return;
       case "call":
-        this.call(q.fn, q.argc, q.dst);
+        this.call(q.argc, q.dst, () => q.fn);
         return;
+      case "callm":
+        // El objeto es el primer argumento: ya está en $a0. Sus métodos reciben su entorno en $v1.
+        this.call(q.argc, q.dst, () => {
+          this.failIf("beqz", ["$a0"], "nullObject");
+          this.ins("lw", "$t8", "0($a0)");
+          this.ins("lw", "$t9", `${4 * q.slot}($t8)`);
+          this.ins("lw", "$v1", "4($a0)");
+          return "$t9";
+        });
+        return;
+      case "newobj": {
+        const layout = this.data.module.classes.find((c) => c.label === q.cls)!;
+        const env = q.env.k === "int" && q.env.value === 0 ? undefined : this.regs.read(q.env);
+        this.ins("li", "$a0", 4 * layout.words);
+        this.ins("li", "$v0", 9);
+        this.ins("syscall");
+        this.ins("la", "$t8", layout.label);
+        this.ins("sw", "$t8", "0($v0)");
+        if (env) this.ins("sw", env, "4($v0)");
+        this.ins("move", this.write(q.dst), "$v0");
+        return;
+      }
+      case "getf": {
+        const o = this.regs.read(q.object);
+        this.failIf("beqz", [o], "nullObject");
+        const d = this.write(q.dst);
+        this.ins(d.startsWith("$f") ? "lwc1" : "lw", d, `${q.offset}(${o})`);
+        return;
+      }
+      case "setf": {
+        const v = this.regs.read(q.a);
+        const o = this.regs.read(q.object);
+        this.failIf("beqz", [o], "nullObject");
+        this.ins(v.startsWith("$f") ? "swc1" : "sw", v, `${q.offset}(${o})`);
+        return;
+      }
       case "ret":
         if (q.a) this.into(q.a, this.classOf(q.a) === "float" ? "$f0" : "$v0");
         this.regs.flush("globals");

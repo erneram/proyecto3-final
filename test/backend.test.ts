@@ -259,3 +259,66 @@ describe("MIPS: arreglos en MARS", { skip: skipMars }, () => {
     assert.deepEqual({ stdout: r.stdout, status: r.status }, { stdout: `1\n${RUNTIME_ERRORS.bounds}\n`, status: 1 });
   });
 });
+
+describe("MIPS: objetos en MARS", { skip: skipMars }, () => {
+  it("constructor heredado, campos boolean y flotantes, argumento promovido", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        class Base { let valor: float; let listo: boolean; function constructor(v: float) { this.valor = v; this.listo = true; } }
+        class Hija : Base { let extra = 2; function mostrar() { print(this.valor); print(this.listo); print(this.extra); } }
+        let h = new Hija(3);
+        h.mostrar();
+        class Caja { let v: float = 1; function poner(x: float) { this.v = this.v + x; } }
+        let c = new Caja();
+        c.poner(2);
+        print(c.v);
+      `),
+      ["3.0", "true", "2", "3.0"],
+    );
+  });
+
+  it("despacho dinámico: el método redefinido gana aunque la variable sea de la clase padre", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        class Animal { let nombre: string; function constructor(n: string) { this.nombre = n; } function sonido(): string { return "..."; } function hablar() { print(this.nombre + ": " + this.sonido()); } }
+        class Perro : Animal { function sonido(): string { return "guau"; } }
+        class Cachorro : Perro { function sonido(): string { return "guau" + "i"; } }
+        let zoo: Animal[] = [new Animal("x"), new Perro("rex"), new Cachorro("bob")];
+        foreach (a in zoo) { a.hablar(); }
+      `),
+      ["x: ...", "rex: guau", "bob: guaui"],
+    );
+  });
+
+  it("métodos recursivos, muchos argumentos y clases homónimas en bloques hermanos", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        class Mate {
+          function fact(n: integer): integer { if (n <= 1) { return 1; } return n * this.fact(n - 1); }
+          function suma(a: integer, b: integer, c: integer, d: integer, e: float): float { return a + b + c + d + e; }
+        }
+        let m = new Mate();
+        print(m.fact(6));
+        print(m.suma(1, 2, 3, 4, 0.5));
+        if (true) { class P { let x = 1; } let p = new P(); print(p.x); }
+        if (true) { class P { let x = 2.5; } let p = new P(); print(p.x); }
+      `),
+      ["720", "10.5", "1", "2.5"],
+    );
+  });
+
+  it("usar un objeto null se atrapa como error", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        class Nodo { let v = 1; function get(): integer { return this.v; } }
+        let n: Nodo = null;
+        try { print(n.v); } catch (e) { print(e); }
+        try { n.v = 2; } catch (e) { print(e); }
+        try { print(n.get()); } catch (e) { print(e); }
+        n = new Nodo();
+        print(n.get());
+      `),
+      [RUNTIME_ERRORS.nullObject, RUNTIME_ERRORS.nullObject, RUNTIME_ERRORS.nullObject, "1"],
+    );
+  });
+});

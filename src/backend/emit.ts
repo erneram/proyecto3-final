@@ -44,6 +44,8 @@ export class DataSection {
   render(): string[] {
     const lines = this.module.globals.map((_, i) => `${this.global(i)}: .word 0`);
     if (this.handlers) lines.push(`${HANDLER_TOP}: .word 0`);
+    // Cada vtable es la lista de direcciones de sus métodos.
+    for (const c of this.module.classes) lines.push(`${c.label}: .word ${c.vtable.map((e) => e.fn).join(", ") || 0}`);
     for (const [value, label] of this.#floats) lines.push(`${label}: .float ${value}`);
     for (const [value, label] of this.#strings) lines.push(`${label}: .asciiz ${asciiz(value)}`);
     return lines;
