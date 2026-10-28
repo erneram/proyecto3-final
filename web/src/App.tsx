@@ -1,8 +1,12 @@
 import { useState } from "react";
 import { CodeEditor } from "@/CodeEditor";
+import { ProblemsPanel } from "@/ProblemsPanel";
+import { useCompiler } from "@/useCompiler";
 import { HUDFrame } from "@/components/thegridcn/hud-frame";
 import { StatusBar } from "@/components/thegridcn/status-bar";
 import { UplinkHeader } from "@/components/thegridcn/uplink-header";
+
+const NO_DIAGNOSTICS: never[] = [];
 
 const INITIAL_SOURCE = `function factorial(n: integer): integer {
   if (n <= 1) { return 1; }
@@ -16,6 +20,11 @@ print(factorial(5));
 export function App() {
   const [source, setSource] = useState(INITIAL_SOURCE);
   const lines = source.split("\n").length;
+  const { reply, busy } = useCompiler(source);
+  const diagnostics = reply?.diagnostics ?? NO_DIAGNOSTICS;
+  const errors = diagnostics.filter((d) => d.severity === "error").length;
+  const warnings = diagnostics.length - errors;
+  const status = busy ? "Compilando…" : errors ? `${errors} errores` : "Sin errores";
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -26,14 +35,19 @@ export function App() {
       </header>
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-2">
         <HUDFrame label="Editor" className="flex min-h-0 flex-col p-4 pt-5">
-          <CodeEditor value={source} onChange={setSource} />
+          <CodeEditor value={source} onChange={setSource} diagnostics={diagnostics} />
         </HUDFrame>
-        <HUDFrame label="Resultados" className="flex min-h-0 flex-col p-4 pt-5">
-          <p className="font-mono text-sm text-muted-foreground">Sin compilar todavía.</p>
+        <HUDFrame label="Problemas" className="flex min-h-0 flex-col p-4 pt-5">
+          <ProblemsPanel reply={reply} />
         </HUDFrame>
       </main>
       <StatusBar
-        leftContent={<span>Listo</span>}
+        leftContent={
+          <>
+            <span className={errors && !busy ? "text-destructive" : undefined}>{status}</span>
+            {warnings > 0 && <span>{warnings} advertencias</span>}
+          </>
+        }
         rightContent={
           <>
             <span>{lines} líneas</span>
