@@ -87,7 +87,13 @@ La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com
 | `13-error-sin-capturar` | un error sin `try` imprime su mensaje y termina con código 1 |
 | `14-flotantes` | conversión a float en llamadas, campos, arreglos, clausuras y retornos |
 
-`examples/errors/` contiene programas con errores semánticos. La primera línea de cada uno declara los códigos que debe producir (`// esperado: E201 E202 …`).
+`examples/errors/` contiene programas con errores, agrupados por fase. La primera línea de cada uno declara lo que debe reportar el compilador:
+
+| Carpeta | Contiene | `// esperado:` |
+|---|---|---|
+| `lexico/` | caracteres desconocidos, cadenas sin cerrar, escapes inválidos | posiciones `línea:columna` |
+| `sintaxis/` | `;`, llaves y paréntesis faltantes o de más, expresiones incompletas | posiciones `línea:columna` |
+| `semantica/` | tipos, nombres, funciones, clases, arreglos y flujo | códigos (`E201 E202 …`) |
 
 ## Pruebas
 

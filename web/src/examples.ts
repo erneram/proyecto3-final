@@ -1,10 +1,16 @@
-const sources = import.meta.glob<string>("../../examples/{run,lang,errors}/*.cps", {
+const sources = import.meta.glob<string>(["../../examples/{run,lang}/*.cps", "../../examples/errors/*/*.cps"], {
   query: "?raw",
   import: "default",
   eager: true,
 });
 
-const GROUP: Record<string, string> = { run: "Ejecución", lang: "Lenguaje", errors: "Errores" };
+const GROUP: Record<string, string> = {
+  run: "Ejecución",
+  lang: "Lenguaje",
+  lexico: "Errores léxicos",
+  sintaxis: "Errores sintácticos",
+  semantica: "Errores semánticos",
+};
 
 export interface Example {
   name: string;
