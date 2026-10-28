@@ -1,3 +1,4 @@
+import { generate } from "./backend/emit.js";
 import { check, type CheckResult } from "./check/checker.js";
 import type { Diagnostic } from "./diagnostic.js";
 import type { Program } from "./frontend/ast.js";
@@ -7,7 +8,7 @@ import type { IrModule } from "./ir/ir.js";
 import { lower } from "./ir/lower.js";
 
 /** Etapas en orden; cada una solo corre si la anterior terminó sin errores. */
-export const STAGES = ["parse", "check", "ir"] as const;
+export const STAGES = ["parse", "check", "ir", "asm"] as const;
 export type Stage = (typeof STAGES)[number];
 
 export interface Compilation {
@@ -17,6 +18,8 @@ export interface Compilation {
   program?: Program;
   checked?: CheckResult;
   ir?: IrModule;
+  /** Ensamblador MIPS para MARS. */
+  asm?: string;
   /** Primera etapa pedida que no corrió, con el motivo. */
   stopped?: { stage: Stage; reason: string };
   /** Se llegó a la etapa pedida y no hubo errores (las advertencias no cuentan). */
@@ -43,6 +46,8 @@ export function compile(source: string, upTo: Stage = STAGES[STAGES.length - 1])
     if (wants("ir")) result.stopped = { stage: "ir", reason: "Hay errores semánticos; no se genera código intermedio." };
     return result;
   }
-  if (wants("ir")) result.ir = lower(result.program, result.checked);
+  if (!wants("ir")) return { ...result, ok: true };
+  result.ir = lower(result.program, result.checked);
+  if (wants("asm")) result.asm = generate(result.ir);
   return { ...result, ok: true };
 }

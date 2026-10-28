@@ -1,5 +1,6 @@
 import type { IrModule } from "../ir/ir.js";
 import { FunctionEmitter } from "./isel.js";
+import { peephole } from "./peephole.js";
 import { HANDLER_TOP, routineLabel, runtimeCode, type Routine } from "./runtime.js";
 
 /** Escapes que MARS entiende dentro de `.asciiz`. */
@@ -53,11 +54,12 @@ export class DataSection {
 }
 
 /** Programa completo para MARS: datos, arranque y una rutina por función. */
-export function generate(m: IrModule): string {
+export function generate(m: IrModule, options: { optimize?: boolean } = {}): string {
   const data = new DataSection(m);
   // MARS empieza en la primera instrucción de .text: el arranque llama a main y termina.
   const text = ["__inicio:", "    jal main", "    li $v0, 10", "    syscall"];
   for (const fn of m.functions) text.push("", ...new FunctionEmitter(fn, data).emit());
   text.push(...runtimeCode(data.routines, (msg) => data.string(msg)));
-  return [".data", ...data.render(), "", ".text", ...text, ""].join("\n");
+  const code = text.join("\n").split("\n");
+  return [".data", ...data.render(), "", ".text", ...(options.optimize === false ? code : peephole(code)), ""].join("\n");
 }

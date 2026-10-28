@@ -6,7 +6,7 @@ describe("compile", () => {
   it("un programa válido atraviesa todas las etapas", () => {
     const r = compile("let x: integer = 2; print(x * 3);");
     assert.equal(r.ok, true);
-    assert.ok(r.program && r.checked && r.ir);
+    assert.ok(r.program && r.checked && r.ir && r.asm);
     assert.equal(r.stopped, undefined);
   });
 

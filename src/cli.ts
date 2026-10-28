@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { SYMBOL_KIND_LABEL } from "./check/scope.js";
 import { typeName } from "./check/types.js";
@@ -7,6 +7,7 @@ import { compile } from "./compile.js";
 import { outline, renderOutline } from "./frontend/outline.js";
 import { printCfg } from "./ir/cfg.js";
 import { printModule } from "./ir/print.js";
+import { marsAvailable, runMars } from "../scripts/mars.js";
 
 const USAGE = `Uso: compis <comando> <archivo.cps>
 
@@ -15,10 +16,13 @@ Comandos:
   tree     Muestra el árbol sintáctico abstracto
   check    Valida la semántica y muestra la tabla de símbolos
   tac      Muestra el código de tres direcciones
+  asm      Genera ensamblador MIPS para MARS
+  run      Compila y ejecuta el programa en MARS
 
 Opciones:
-  --cfg        Con tac: agrupa cada función en bloques básicos
-  -h, --help   Muestra esta ayuda`;
+  --cfg            Con tac: agrupa cada función en bloques básicos
+  -o, --out <f>    Con asm: escribe el ensamblador en <f> en vez de mostrarlo
+  -h, --help       Muestra esta ayuda`;
 
 const PHASE_LABEL: Record<Diagnostic["phase"], string> = {
   lexer: "léxico",
@@ -38,6 +42,7 @@ class UsageError extends Error {}
 
 interface Options {
   cfg?: boolean;
+  out?: string;
 }
 
 type Command = (file: string, source: string, options: Options) => number;
@@ -102,6 +107,36 @@ const commands: Record<string, Command> = {
     console.log(options.cfg ? ir.functions.map((fn) => printCfg(fn, ir)).join("\n\n") : printModule(ir));
     return 0;
   },
+
+  asm(file, source, options) {
+    const { asm, diagnostics, stopped } = compile(source, "asm");
+    report(file, diagnostics);
+    if (!asm) {
+      if (stopped) console.error(`nota: ${stopped.reason}`);
+      return 1;
+    }
+    if (options.out) writeFileSync(options.out, asm);
+    else process.stdout.write(asm);
+    return 0;
+  },
+
+  run(file, source) {
+    const { asm, diagnostics, stopped } = compile(source, "asm");
+    report(file, diagnostics);
+    if (!asm) {
+      if (stopped) console.error(`nota: ${stopped.reason}`);
+      return 1;
+    }
+    if (!marsAvailable()) {
+      console.error("MARS no está disponible: corre `npm run mars:setup` y verifica que Java esté instalado.");
+      return 1;
+    }
+    const r = runMars(asm);
+    process.stdout.write(r.stdout);
+    process.stderr.write(r.stderr);
+    if (r.timedOut) console.error("\nnota: se alcanzó el límite de instrucciones de MARS.");
+    return r.timedOut ? 1 : r.status;
+  },
 };
 
 function printTable(header: string[], rows: string[][]): void {
@@ -115,7 +150,11 @@ function printTable(header: string[], rows: string[][]): void {
 function main(argv: string[]): number {
   let parsed;
   try {
-    parsed = parseArgs({ args: argv, allowPositionals: true, options: { help: { type: "boolean", short: "h" }, cfg: { type: "boolean" } } });
+    parsed = parseArgs({
+      args: argv,
+      allowPositionals: true,
+      options: { help: { type: "boolean", short: "h" }, cfg: { type: "boolean" }, out: { type: "string", short: "o" } },
+    });
   } catch (e) {
     const option = /'([^']+)'/.exec((e as Error).message)?.[1];
     throw new UsageError(option ? `Opción desconocida: ${option}.` : "Argumentos inválidos.");
@@ -138,7 +177,7 @@ function main(argv: string[]): number {
   } catch {
     throw new UsageError(`No se pudo leer ${file}.`);
   }
-  return command(file, source, { cfg: parsed.values.cfg });
+  return command(file, source, { cfg: parsed.values.cfg, out: parsed.values.out });
 }
 
 try {
