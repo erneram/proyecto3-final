@@ -32,7 +32,7 @@ function Problem({ d }: { d: Diagnostic }) {
 export function ProblemsPanel({ reply }: { reply: CompileReply | null }) {
   if (!reply) return <p className="font-mono text-sm text-muted-foreground">Compilando…</p>;
   return (
-    <div className="flex min-h-0 flex-col gap-2 overflow-y-auto pr-1">
+    <div className="flex flex-col gap-2 pr-1">
       {reply.diagnostics.map((d, i) => (
         <Problem key={i} d={d} />
       ))}

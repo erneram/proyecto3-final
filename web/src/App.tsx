@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { CodeEditor } from "@/CodeEditor";
 import { ProblemsPanel } from "@/ProblemsPanel";
+import { Empty, OutlineTree, SymbolsPanel, TokensPanel } from "@/panels";
 import { useCompiler } from "@/useCompiler";
 import { HUDFrame } from "@/components/thegridcn/hud-frame";
 import { StatusBar } from "@/components/thegridcn/status-bar";
 import { UplinkHeader } from "@/components/thegridcn/uplink-header";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const NO_DIAGNOSTICS: never[] = [];
 
@@ -37,8 +40,38 @@ export function App() {
         <HUDFrame label="Editor" className="flex min-h-0 flex-col p-4 pt-5">
           <CodeEditor value={source} onChange={setSource} diagnostics={diagnostics} />
         </HUDFrame>
-        <HUDFrame label="Problemas" className="flex min-h-0 flex-col p-4 pt-5">
-          <ProblemsPanel reply={reply} />
+        <HUDFrame label="Resultados" className="flex min-h-0 flex-col p-4 pt-5">
+          <Tabs defaultValue="problems" className="min-h-0 flex-1">
+            <TabsList className="w-full">
+              <TabsTrigger value="problems">
+                Problemas
+                {diagnostics.length > 0 && (
+                  <Badge variant={errors ? "destructive" : "secondary"} className="px-1.5 py-0">
+                    {diagnostics.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="tokens">Tokens</TabsTrigger>
+              <TabsTrigger value="ast">AST</TabsTrigger>
+              <TabsTrigger value="scopes">Ámbitos</TabsTrigger>
+              <TabsTrigger value="symbols">Símbolos</TabsTrigger>
+            </TabsList>
+            <TabsContent value="problems" className="min-h-0 overflow-y-auto">
+              <ProblemsPanel reply={reply} />
+            </TabsContent>
+            <TabsContent value="tokens" className="min-h-0 overflow-y-auto">
+              <TokensPanel tokens={reply?.tokens ?? []} />
+            </TabsContent>
+            <TabsContent value="ast" className="min-h-0 overflow-auto">
+              {reply?.ast ? <OutlineTree root={reply.ast} /> : <Empty>Sin AST: corrige primero los errores léxicos o sintácticos.</Empty>}
+            </TabsContent>
+            <TabsContent value="scopes" className="min-h-0 overflow-auto">
+              {reply?.scopes ? <OutlineTree root={reply.scopes} /> : <Empty>Sin ámbitos: el análisis semántico no corrió.</Empty>}
+            </TabsContent>
+            <TabsContent value="symbols" className="min-h-0 overflow-y-auto">
+              {reply?.symbols ? <SymbolsPanel symbols={reply.symbols} /> : <Empty>Sin tabla de símbolos: el análisis semántico no corrió.</Empty>}
+            </TabsContent>
+          </Tabs>
         </HUDFrame>
       </main>
       <StatusBar

@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "./components/thegridcn-theme.css";
 
+/* La IDE solo tiene tema oscuro: `dark:` aplica siempre bajo data-theme="tron", sin depender del sistema. */
+@custom-variant dark (&:where([data-theme="tron"], [data-theme="tron"] *));
+
 /* Primario de la interfaz: cian TRON #00D4FF en lugar del oklch del tema. */
 :root {
   color-scheme: dark;
