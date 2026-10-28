@@ -40,6 +40,11 @@ function describeToken(t: Token | null): string {
   return !t || t.type === Token.EOF ? "el final del archivo" : `"${t.text}"`;
 }
 
+/** "de" seguido del token, contraído a "del" ante el final del archivo. */
+function ofToken(t: Token | null): string {
+  return `de ${describeToken(t)}`.replace(/^de el /, "del ");
+}
+
 export type SyntaxReporter = (offending: Token, line: number, column: number, message: string) => void;
 
 /**
@@ -64,7 +69,7 @@ export class SpanishErrorStrategy extends DefaultErrorStrategy {
       const expected = e.getExpectedTokens() ?? this.getExpectedTokens(p);
       this.#at(t, `Se encontró ${describeToken(t)}, pero se esperaba ${describeSet(expected, p.vocabulary)}.`);
     } else {
-      this.#at(t, `Estructura inválida cerca de ${describeToken(t)}.`);
+      this.#at(t, `Estructura inválida cerca ${ofToken(t)}.`);
     }
   }
 
@@ -72,14 +77,20 @@ export class SpanishErrorStrategy extends DefaultErrorStrategy {
     if (this.inErrorRecoveryMode(p)) return;
     this.beginErrorCondition(p);
     const t = p.getCurrentToken();
-    this.#at(t, `Sobra ${describeToken(t)}; se esperaba ${describeSet(this.getExpectedTokens(p), p.vocabulary)}.`);
+    const expected = describeSet(this.getExpectedTokens(p), p.vocabulary);
+    this.#at(
+      t,
+      t.type === Token.EOF
+        ? `El archivo termina antes de tiempo; se esperaba ${expected}.`
+        : `Sobra ${describeToken(t)}; se esperaba ${expected}.`,
+    );
   }
 
   override reportMissingToken(p: Parser): void {
     if (this.inErrorRecoveryMode(p)) return;
     this.beginErrorCondition(p);
     const t = p.getCurrentToken();
-    const message = `Falta ${describeSet(this.getExpectedTokens(p), p.vocabulary)} antes de ${describeToken(t)}.`;
+    const message = `Falta ${describeSet(this.getExpectedTokens(p), p.vocabulary)} antes ${ofToken(t)}.`;
     // Se señala justo después del token anterior: ahí es donde falta algo.
     const prev = p.tokenStream.LT(-1);
     if (prev) this.#report(t, prev.line, prev.column + (prev.text?.length ?? 0) + 1, message);

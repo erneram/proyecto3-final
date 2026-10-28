@@ -57,6 +57,11 @@ describe("parser", () => {
     assert.deepEqual(where("let a = 10\nlet b = 2;"), ["parser@1:11"]);
   });
 
+  it("redacta bien los errores al final del archivo", () => {
+    assert.match(parse("let a = 10").diagnostics[0].message, /antes del final del archivo/);
+    assert.match(parse("if (a) { print(1);").diagnostics[0].message, /termina antes de tiempo/);
+  });
+
   it("redacta los mensajes en español", () => {
     for (const src of ["let = 3;", "print(1", "x = ;", "class { }", "if (a) { } else if (b) { }"]) {
       const messages = parse(src).diagnostics.map((d) => d.message);
