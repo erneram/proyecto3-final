@@ -1,4 +1,7 @@
+import { RUNTIME_ERRORS } from "../../src/backend/runtime.js";
 import type { ClassLayout, IrFunction, IrModule, Operand } from "../../src/ir/ir.js";
+
+export { RUNTIME_ERRORS };
 
 /**
  * Intérprete del código de tres direcciones, solo para pruebas: permite verificar
@@ -14,13 +17,6 @@ interface ArrayRef {
 }
 /** `0` es null; los bloques del heap (entornos y objetos) son arreglos de palabras. */
 type Value = number | string | Value[] | Closure | ArrayRef | ClassLayout;
-
-export const RUNTIME_ERRORS = {
-  bounds: "Runtime error: array index out of bounds",
-  nullArray: "Runtime error: null array",
-  nullObject: "Runtime error: null reference",
-  divByZero: "Runtime error: division by zero",
-};
 
 class Fault extends Error {}
 

@@ -2,6 +2,7 @@ import { buildCfg } from "../ir/cfg.js";
 import { classOf, type FloatOp, type IntOp, type IrFunction, type Operand, type Quad } from "../ir/ir.js";
 import type { DataSection } from "./emit.js";
 import { isVariable, Registers, type Emitter } from "./regs.js";
+import { HANDLER_TOP, HANDLER_WORDS, type RuntimeError } from "./runtime.js";
 
 /** Cuádruplos que cierran su bloque saltando: vacían los registros ellos mismos antes del salto. */
 const JUMPS = new Set<Quad["op"]>(["goto", "if", "ifnot", "ret", "try"]);
@@ -29,6 +30,7 @@ const fitsImmediate = (o: Operand): o is { k: "int"; value: number } => o.k === 
  * Marco (crece hacia abajo, `$fp` = `$sp` tras el prólogo):
  *   0($fp) ...           slots (parámetros y locales), uno por palabra
  *   ...                  un lugar por temporal
+ *   ...                  un registro de manejador por cada `try` de la función
  *   size-8($fp)          $fp de quien llamó
  *   size-4($fp)          $ra
  * Los flotantes ocupan una palabra como cualquier otro valor.
@@ -46,7 +48,11 @@ export class FunctionEmitter implements Emitter {
     readonly fn: IrFunction,
     readonly data: DataSection,
   ) {
-    this.#size = 4 * (fn.slots.length + fn.temps.length) + 8;
+    const handlersAt = 4 * (fn.slots.length + fn.temps.length);
+    for (const q of fn.body) {
+      if (q.op === "try") this.#handlerRecords.set(q.handler, handlersAt + 4 * HANDLER_WORDS * this.#handlerRecords.size);
+    }
+    this.#size = handlersAt + 4 * HANDLER_WORDS * this.#handlerRecords.size + 8;
     this.#blocks = buildCfg(fn);
     // Temporales que aparecen en un solo bloque: al salir de él ya no se usan.
     const seenIn = new Map<number, Set<number>>();
@@ -68,6 +74,8 @@ export class FunctionEmitter implements Emitter {
   }
 
   readonly #blocks: ReturnType<typeof buildCfg>;
+  /** Desplazamiento en el marco del registro de cada `try`, por su etiqueta de catch. */
+  readonly #handlerRecords = new Map<string, number>();
 
   emit(): string[] {
     this.#out.length = 0;
@@ -210,6 +218,7 @@ export class FunctionEmitter implements Emitter {
       case "mod": {
         const a = this.regs.read(q.a);
         const b = this.regs.read(q.b);
+        if (q.b.k !== "int" || q.b.value === 0) this.failIf("beqz", [b], "divByZero");
         this.ins("div", a, b);
         this.ins(q.op === "div" ? "mflo" : "mfhi", this.write(q.dst));
         return;
@@ -256,6 +265,41 @@ export class FunctionEmitter implements Emitter {
         this.ins(q.op === "if" ? "bnez" : "beqz", a, q.target);
         return;
       }
+      case "concat":
+      case "streq": {
+        this.into(q.a, "$a0");
+        this.into(q.b, "$a1");
+        this.ins("jal", this.data.routine(q.op));
+        this.ins("move", this.write(q.dst), "$v0");
+        return;
+      }
+      case "alloc":
+        this.allocate(4 * q.words, q.dst);
+        return;
+      case "try": {
+        // El registro vive en este marco: cada activación de la función tiene el suyo.
+        const at = this.#handlerRecords.get(q.handler)!;
+        this.regs.flush("block");
+        this.ins("la", "$t8", q.handler);
+        this.ins("sw", "$t8", `${at + 4}($fp)`);
+        this.ins("lw", "$t8", HANDLER_TOP);
+        this.ins("sw", "$t8", `${at}($fp)`);
+        this.ins("sw", "$sp", `${at + 8}($fp)`);
+        this.ins("sw", "$fp", `${at + 12}($fp)`);
+        this.ins("addiu", "$t8", "$fp", at);
+        this.ins("sw", "$t8", HANDLER_TOP);
+        this.data.handlers = true;
+        return;
+      }
+      case "endtry":
+        this.ins("lw", "$t8", HANDLER_TOP);
+        this.ins("lw", "$t8", "0($t8)");
+        this.ins("sw", "$t8", HANDLER_TOP);
+        return;
+      case "caught":
+        // El runtime deja el mensaje del error en $v0 al saltar al catch.
+        this.ins("move", this.write(q.dst), "$v0");
+        return;
       case "param":
         this.#pending.push(q.a);
         return;
@@ -273,6 +317,24 @@ export class FunctionEmitter implements Emitter {
       default:
         throw new Error(`Generación de MIPS pendiente para '${q.op}'`);
     }
+  }
+
+  /**
+   * Salta al error `error` si se cumple la condición. Antes se guardan los valores
+   * modificados: si un `catch` atrapa el error, los lee de memoria.
+   */
+  failIf(branch: string, operands: string[], error: RuntimeError): void {
+    this.regs.flush("block");
+    this.ins(branch, ...operands, this.data.routine(`error_${error}`));
+  }
+
+  /** Reserva `bytes` en el heap (sbrk entrega memoria en ceros) y deja la dirección en `dst`. */
+  allocate(bytes: number | string, dst: Operand): void {
+    if (typeof bytes === "number") this.ins("li", "$a0", bytes);
+    else this.ins("move", "$a0", bytes);
+    this.ins("li", "$v0", 9);
+    this.ins("syscall");
+    this.ins("move", this.write(dst), "$v0");
   }
 
   /** Registro para el nuevo valor de `o`. */

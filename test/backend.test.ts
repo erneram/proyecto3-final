@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { marsAvailable, runMars } from "../scripts/mars.js";
 import { generate } from "../src/backend/emit.js";
 import { compile } from "../src/compile.js";
-import { runIr } from "./support/interp.js";
+import { RUNTIME_ERRORS, runIr } from "./support/interp.js";
 
 function asm(src: string): string {
   const { ir, diagnostics } = compile(src);
@@ -146,5 +146,58 @@ describe("MIPS: llamadas en MARS", { skip: skipMars }, () => {
       `),
       ["9", "nada", "3", "9"],
     );
+  });
+});
+
+describe("MIPS: runtime en MARS", { skip: skipMars }, () => {
+  it("concatena y compara cadenas", () => {
+    assert.deepEqual(
+      sameAsInterpreter('let a = "ho"; let b = a + "la"; print(b); print(b == "hola"); print(b != "hola"); print(a + a + "!"); let vacia = ""; print(vacia + b); print("" == ""); print("a" == "ab");'),
+      ["hola", "true", "false", "hoho!", "hola", "true", "false"],
+    );
+  });
+
+  it("catch recibe el error y ve los valores asignados antes de fallar", () => {
+    assert.deepEqual(
+      sameAsInterpreter('let x = 1; try { x = 2; print(10 / (x - 2)); print("no"); } catch (e) { print(e); print(x); } print("sigue");'),
+      [RUNTIME_ERRORS.divByZero, "2", "sigue"],
+    );
+  });
+
+  it("un error en una función llamada se atrapa más arriba y la pila queda bien", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        function dividir(a: integer, b: integer): integer { return a / b; }
+        function medio(b: integer): integer { let local = 5; return dividir(local, b) + local; }
+        function seguro(a: integer, b: integer): integer { try { return a / b; } catch (e) { print(e); } return -1; }
+        try { print(medio(0)); } catch (e) { print("atrapado: " + e); }
+        print(medio(1));
+        print(seguro(7, 2));
+        print(seguro(1, 0));
+      `),
+      ["atrapado: " + RUNTIME_ERRORS.divByZero, "10", "3", RUNTIME_ERRORS.divByZero, "-1"],
+    );
+  });
+
+  it("try anidados y try repetido en un bucle", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        let z = 0;
+        try { try { print(1 / z); } catch (e) { print("interior"); } print(2 % z); } catch (e) { print("exterior"); }
+        let c = 0;
+        for (let i = 0; i < 1000; i = i + 1) { try { c = c + 10 / (i % 2); } catch (e) { c = c + 1; } }
+        print(c);
+        while (true) { try { break; } catch (e) { print("mal"); } }
+        print("fin");
+      `),
+      ["interior", "exterior", "5500", "fin"],
+    );
+  });
+
+  it("un error sin capturar imprime el mensaje y termina con código 1", () => {
+    const { ir } = compile("print(1); let z = 0; print(5 / z); print(2);");
+    const r = runMars(generate(ir!));
+    assert.deepEqual({ stdout: r.stdout, status: r.status }, { stdout: `1\n${RUNTIME_ERRORS.divByZero}\n`, status: 1 });
+    assert.deepEqual(runIr(ir!).output, ["1", RUNTIME_ERRORS.divByZero]);
   });
 });
