@@ -1,10 +1,24 @@
 import { buildCfg } from "../ir/cfg.js";
-import { classOf, type IrFunction, type Operand, type Quad } from "../ir/ir.js";
+import { classOf, type FloatOp, type IntOp, type IrFunction, type Operand, type Quad } from "../ir/ir.js";
 import type { DataSection } from "./emit.js";
 import { isVariable, Registers, type Emitter } from "./regs.js";
 
 /** Cuádruplos que cierran su bloque saltando: vacían los registros ellos mismos antes del salto. */
 const JUMPS = new Set<Quad["op"]>(["goto", "if", "ifnot", "ret", "try"]);
+
+/** Operaciones enteras de una instrucción (varias son pseudoinstrucciones de MARS). */
+const INT_INSTR: Record<Exclude<IntOp, "div" | "mod">, string> = {
+  add: "addu", sub: "subu", mul: "mul",
+  lt: "slt", le: "sle", gt: "sgt", ge: "sge", eq: "seq", ne: "sne",
+};
+const FLOAT_ARITH: Partial<Record<FloatOp, string>> = { fadd: "add.s", fsub: "sub.s", fmul: "mul.s", fdiv: "div.s" };
+/** Comparación flotante como `c.xx.s` con operandos en orden o invertidos; `fne` es `feq` negado. */
+const FLOAT_COMPARE: Partial<Record<FloatOp, { cond: string; swap: boolean }>> = {
+  flt: { cond: "lt", swap: false }, fle: { cond: "le", swap: false },
+  fgt: { cond: "lt", swap: true }, fge: { cond: "le", swap: true },
+  feq: { cond: "eq", swap: false }, fne: { cond: "eq", swap: false },
+};
+const fitsImmediate = (o: Operand): o is { k: "int"; value: number } => o.k === "int" && o.value >= -32768 && o.value <= 32767;
 
 /**
  * Traduce una función del código intermedio a MIPS.
@@ -123,7 +137,7 @@ export class FunctionEmitter implements Emitter {
         this.label(q.name);
         return;
       case "mov": {
-        if (!isVariable(q.dst)) throw new Error("Destino de mov no asignable");
+        if (!isVariable(q.dst)) throw new Error(`Destino no asignable: ${q.dst.k}`);
         // Copia sin instrucción: el destino pasa a compartir el registro del origen.
         this.regs.assign(q.dst, this.regs.read(q.a));
         return;
@@ -131,6 +145,75 @@ export class FunctionEmitter implements Emitter {
       case "print":
         this.print(q);
         return;
+      case "add":
+      case "sub":
+      case "mul":
+      case "lt":
+      case "le":
+      case "gt":
+      case "ge":
+      case "eq":
+      case "ne": {
+        const a = this.regs.read(q.a);
+        // Sumar o restar una constante pequeña no necesita registro para ella.
+        if ((q.op === "add" || q.op === "sub") && fitsImmediate(q.b)) {
+          const imm = q.op === "add" ? q.b.value : -q.b.value;
+          if (imm >= -32768 && imm <= 32767) return this.ins("addiu", this.write(q.dst), a, imm);
+        }
+        const b = this.regs.read(q.b);
+        this.ins(INT_INSTR[q.op], this.write(q.dst), a, b);
+        return;
+      }
+      case "div":
+      case "mod": {
+        const a = this.regs.read(q.a);
+        const b = this.regs.read(q.b);
+        this.ins("div", a, b);
+        this.ins(q.op === "div" ? "mflo" : "mfhi", this.write(q.dst));
+        return;
+      }
+      case "fadd":
+      case "fsub":
+      case "fmul":
+      case "fdiv": {
+        const a = this.regs.read(q.a);
+        const b = this.regs.read(q.b);
+        this.ins(FLOAT_ARITH[q.op]!, this.write(q.dst), a, b);
+        return;
+      }
+      case "flt":
+      case "fle":
+      case "fgt":
+      case "fge":
+      case "feq":
+      case "fne": {
+        const { cond, swap } = FLOAT_COMPARE[q.op]!;
+        const a = this.regs.read(q.a);
+        const b = this.regs.read(q.b);
+        this.ins(`c.${cond}.s`, ...(swap ? [b, a] : [a, b]));
+        const d = this.write(q.dst);
+        this.ins("li", d, 1);
+        // La condición queda en la bandera de coma flotante: se apaga el 1 si no se cumple.
+        this.ins(q.op === "fne" ? "movt" : "movf", d, "$zero");
+        return;
+      }
+      case "neg":
+      case "fneg":
+      case "not":
+      case "itof":
+        this.unaryOp(q);
+        return;
+      case "goto":
+        this.regs.flush("block");
+        this.ins("j", q.target);
+        return;
+      case "if":
+      case "ifnot": {
+        const a = this.regs.read(q.a);
+        this.regs.flush("block");
+        this.ins(q.op === "if" ? "bnez" : "beqz", a, q.target);
+        return;
+      }
       case "ret":
         if (q.a) this.into(q.a, this.classOf(q.a) === "float" ? "$f0" : "$v0");
         this.regs.flush("globals");
@@ -141,6 +224,25 @@ export class FunctionEmitter implements Emitter {
         return;
       default:
         throw new Error(`Generación de MIPS pendiente para '${q.op}'`);
+    }
+  }
+
+  /** Registro para el nuevo valor de `o`. */
+  write(o: Operand): string {
+    if (!isVariable(o)) throw new Error(`Destino no asignable: ${o.k}`);
+    return this.regs.write(o);
+  }
+
+  unaryOp(q: Extract<Quad, { op: "neg" | "fneg" | "not" | "itof" }>): void {
+    const a = this.regs.read(q.a);
+    const d = this.write(q.dst);
+    if (q.op === "neg") this.ins("subu", d, "$zero", a);
+    else if (q.op === "fneg") this.ins("neg.s", d, a);
+    // Los booleanos son 0 o 1: `!a` es `a < 1` sin signo.
+    else if (q.op === "not") this.ins("sltiu", d, a, 1);
+    else {
+      this.ins("mtc1", a, d);
+      this.ins("cvt.s.w", d, d);
     }
   }
 

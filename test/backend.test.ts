@@ -56,3 +56,44 @@ describe("MIPS: ejecución en MARS", { skip: skipMars }, () => {
     );
   });
 });
+
+describe("MIPS: aritmética, comparaciones y saltos en MARS", { skip: skipMars }, () => {
+  it("operaciones enteras, incluida la división con signo", () => {
+    sameAsInterpreter(
+      "let a = 17; let b = 5; print(a + b); print(a - b); print(a * b); print(a / b); print(a % b); print(-a); print(-7 / 2); print(-7 % 2); print(a - 40000); print(a + 1);",
+    );
+  });
+
+  it("comparaciones enteras y negación lógica", () => {
+    sameAsInterpreter(
+      "let a = 3; let b = 5; print(a < b); print(a <= 3); print(a > b); print(a >= 4); print(a == 3); print(a != 3); print(!(a < b)); print(0 == 0);",
+    );
+  });
+
+  it("operaciones y comparaciones flotantes con promoción", () => {
+    sameAsInterpreter(
+      "let x = 7.5; let y = 2; print(x + y); print(x - y); print(x * y); print(x / y); print(-x); print(x < y); print(x <= 7.5); print(x > y); print(x >= 8); print(x == 7.5); print(x != 7.5); let z: float = y; print(z);",
+    );
+  });
+
+  it("bucles, cortocircuito, ternario y switch", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        let s = 0;
+        for (let i = 0; i < 10; i = i + 1) { if (i % 2 == 0) { continue; } if (i > 7) { break; } s = s + i; }
+        print(s);
+        let n = 0;
+        while (true) { n = n + 1; if (n >= 3 && !(n == 4) || n > 10) { break; } }
+        print(n);
+        let k = 5;
+        do { k = k - 2; } while (k > 0);
+        print(k);
+        let t = s > 10 ? 1.5 : 2;
+        print(t);
+        switch (n) { case 2: print("dos"); case 3: print("tres"); case 4: print("cuatro"); break; default: print("otro"); }
+        switch (t) { case 1.5: print("uno y medio"); }
+      `),
+      ["16", "3", "-1", "1.5", "tres", "cuatro", "uno y medio"],
+    );
+  });
+});
