@@ -7,6 +7,7 @@ import type { Example } from "@/examples";
 import { ExamplesNav } from "@/ExamplesNav";
 import { BackendStats, CodePanel, Empty, OutlineTree, SymbolsPanel, TokensPanel } from "@/panels";
 import { useCompiler } from "@/useCompiler";
+import { AgentAvatar } from "@/components/thegridcn/agent-avatar";
 import { HUDFrame } from "@/components/thegridcn/hud-frame";
 import { StatusBar } from "@/components/thegridcn/status-bar";
 import { UplinkHeader } from "@/components/thegridcn/uplink-header";
@@ -62,8 +63,12 @@ export function App() {
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <UplinkHeader leftText="COMPISCRIPT // IDE" rightText="MIPS32 · MARS 4.5" />
-      <header className="flex items-baseline justify-between gap-4 px-6 py-4">
-        <h1 className="font-heading text-lg tracking-[0.3em] text-primary">Compiscript</h1>
+      <header className="flex items-center justify-between gap-4 px-6 py-4">
+        <div className="flex items-center gap-3">
+          {/* Matiz 190 = #00D4FF; decorativo, el título ya nombra la app. */}
+          <AgentAvatar seed="compiscript" size={36} hue={190} aria-hidden />
+          <h1 className="font-heading text-lg tracking-[0.3em] text-primary">Compiscript</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button type="button" className={BUTTON} onClick={() => setNavOpen(true)}>
             <FileCode className="size-3.5" />
