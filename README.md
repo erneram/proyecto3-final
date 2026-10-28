@@ -95,6 +95,7 @@ La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com
 | `sintaxis/` | `;`, llaves y paréntesis faltantes o de más, expresiones incompletas | posiciones `línea:columna` |
 | `semantica/` | tipos, nombres, ámbitos, asignaciones, funciones, clases, arreglos y flujo | códigos (`E201 E202 …`) |
 | `advertencias/` | código inalcanzable, retornos faltantes, variables sin valor; compilan y se ejecutan | códigos (`W501 …`) |
+| `ejecucion/` | división entre cero, índice fuera de rango, arreglo y referencia nulos sin `try` | salida esperada en `.out` |
 
 ## Pruebas
 
@@ -104,7 +105,7 @@ npm test                      # todas las pruebas (node --test)
 REQUIRE_MARS=1 npm test       # falla si MARS no está disponible en vez de omitir
 ```
 
-Las pruebas cubren el lexer y el parser, el checker con los ejemplos de error, la traducción a código intermedio (con un intérprete del IR que compara salidas), el asignador de registros, el peephole y la ejecución en MARS. Las pruebas golden ejecutan cada `examples/run/*.cps` en MARS y comparan su salida con el `.out`. Sin Java o sin el jar, las pruebas de MARS se omiten.
+Las pruebas cubren el lexer y el parser, el checker con los ejemplos de error, la traducción a código intermedio (con un intérprete del IR que compara salidas), el asignador de registros, el peephole y la ejecución en MARS. Las pruebas golden ejecutan cada `examples/run/*.cps` y `examples/errors/ejecucion/*.cps` en MARS y comparan su salida con el `.out`. Sin Java o sin el jar, las pruebas de MARS se omiten.
 
 La CI (`.github/workflows/ci.yml`) corre con Node 22 y Java 17. Descarga MARS, revisa los tipos, corre todas las pruebas con `REQUIRE_MARS=1` y compila la IDE.
 

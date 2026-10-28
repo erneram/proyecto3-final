@@ -11,6 +11,7 @@ const GROUP: Record<string, string> = {
   sintaxis: "Errores sintácticos",
   semantica: "Errores semánticos",
   advertencias: "Advertencias",
+  ejecucion: "Errores en ejecución",
 };
 
 export interface Example {

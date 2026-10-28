@@ -6,18 +6,24 @@ import { compile } from "../src/compile.js";
 import { runIr } from "./support/interp.js";
 
 /**
- * Cada `examples/run/X.cps` trae al lado `X.out` con la salida exacta esperada.
+ * Cada `examples/run/X.cps` y `examples/errors/ejecucion/X.cps` trae al lado
+ * `X.out` con la salida exacta esperada.
  * El intérprete del código intermedio la verifica siempre; MARS, cuando está
  * disponible (o siempre, con REQUIRE_MARS=1).
  */
-const DIR = new URL("../examples/run/", import.meta.url);
-const programs = readdirSync(DIR).filter((f) => f.endsWith(".cps")).sort();
+const DIRS = ["run", "errors/ejecucion"].map((d) => new URL(`../examples/${d}/`, import.meta.url));
+const programs = DIRS.flatMap((dir) =>
+  readdirSync(dir)
+    .filter((f) => f.endsWith(".cps"))
+    .sort()
+    .map((f) => new URL(f, dir)),
+);
 const skipMars = process.env.REQUIRE_MARS !== "1" && !marsAvailable() ? "MARS no disponible" : false;
 
-const load = (name: string) => {
-  const result = compile(readFileSync(new URL(name, DIR), "utf8"));
+const load = (file: URL) => {
+  const result = compile(readFileSync(file, "utf8"));
   assert.ok(result.ir && result.asm, JSON.stringify(result.diagnostics));
-  return { ...result, expected: readFileSync(new URL(name.replace(/\.cps$/, ".out"), DIR), "utf8") };
+  return { ...result, expected: readFileSync(new URL(file.href.replace(/\.cps$/, ".out")), "utf8") };
 };
 
 describe("programas de ejemplo", () => {
@@ -25,16 +31,16 @@ describe("programas de ejemplo", () => {
     assert.ok(programs.length >= 10);
   });
 
-  for (const name of programs) {
-    describe(name, () => {
+  for (const file of programs) {
+    describe(file.pathname.split("/examples/")[1], () => {
       it("el código intermedio produce la salida esperada", () => {
-        const { ir, expected, diagnostics } = load(name);
+        const { ir, expected, diagnostics } = load(file);
         assert.deepEqual(diagnostics.filter((d) => d.severity === "error"), []);
         assert.equal(runIr(ir!).output.map((line) => `${line}\n`).join(""), expected);
       });
 
       it("MARS produce la salida esperada", { skip: skipMars }, () => {
-        const { ir, asm, expected } = load(name);
+        const { ir, asm, expected } = load(file);
         const r = runMars(asm!);
         assert.equal(r.timedOut, false);
         assert.equal(r.stdout, expected);

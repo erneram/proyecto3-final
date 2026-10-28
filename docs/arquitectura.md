@@ -281,8 +281,9 @@ después de `j`/`jr` hasta la siguiente etiqueta.
   programas y compara su salida;
 - backend: asignador, peephole y suites que ensamblan y ejecutan en MARS,
   comparando con el intérprete;
-- **golden**: cada `examples/run/NN-*.cps` se ejecuta en MARS y su salida debe
-  ser idéntica a `NN-*.out`.
+- **golden**: cada `examples/run/NN-*.cps` y `examples/errors/ejecucion/*.cps`
+  se ejecuta en MARS y su salida debe ser idéntica a su `.out`; los errores sin
+  capturar deben terminar con código 1.
 
 Sin Java o sin el jar, las pruebas de MARS se omiten. Con `REQUIRE_MARS=1`
 (así corre la CI) son obligatorias. La CI (`.github/workflows/ci.yml`) usa
