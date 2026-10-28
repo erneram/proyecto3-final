@@ -201,3 +201,61 @@ describe("MIPS: runtime en MARS", { skip: skipMars }, () => {
     assert.deepEqual(runIr(ir!).output, ["1", RUNTIME_ERRORS.divByZero]);
   });
 });
+
+describe("MIPS: arreglos en MARS", { skip: skipMars }, () => {
+  it("literales, lectura y escritura por índice, matrices y foreach", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        let a = [10, 20, 30];
+        let i = 2;
+        a[i] = a[0] + a[1];
+        print(a[2]);
+        let m = [[1, 2], [3, 4]];
+        m[1][0] = m[0][1] * 10;
+        print(m[1][0] + m[1][1]);
+        let f: float[] = [1, 2.5];
+        f[0] = f[0] + f[1];
+        print(f[0]);
+        let suma = 0;
+        foreach (x in a) { suma = suma + x; }
+        print(suma);
+        foreach (y in f) { print(y); }
+        let palabras = ["uno", "dos"];
+        foreach (p in palabras) { print(p + "!"); }
+        let vacio: integer[] = [];
+        foreach (z in vacio) { print("nunca"); }
+      `),
+      ["30", "24", "3.5", "60", "3.5", "2.5", "uno!", "dos!"],
+    );
+  });
+
+  it("los arreglos se pasan por referencia", () => {
+    assert.deepEqual(
+      sameAsInterpreter("function llenar(xs: integer[], v: integer) { let i = 0; while (i < 3) { xs[i] = v + i; i = i + 1; } } let a = [0, 0, 0]; llenar(a, 7); print(a[0] + a[1] + a[2]);"),
+      ["24"],
+    );
+  });
+
+  it("índices fuera de rango, negativos y arreglos null se atrapan", () => {
+    assert.deepEqual(
+      sameAsInterpreter(`
+        let a = [1, 2];
+        let k = -1;
+        try { print(a[2]); } catch (e) { print(e); }
+        try { print(a[k]); } catch (e) { print(e); }
+        try { a[5] = 1; } catch (e) { print(e); }
+        let n: integer[] = null;
+        try { print(n[0]); } catch (e) { print(e); }
+        try { foreach (x in n) { print(x); } } catch (e) { print(e); }
+        print(a[1]);
+      `),
+      [RUNTIME_ERRORS.bounds, RUNTIME_ERRORS.bounds, RUNTIME_ERRORS.bounds, RUNTIME_ERRORS.nullArray, RUNTIME_ERRORS.nullArray, "2"],
+    );
+  });
+
+  it("un error de arreglo sin capturar detiene el programa", () => {
+    const { ir } = compile('let a = [1]; print(a[0]); print(a[1]); print("nunca");');
+    const r = runMars(generate(ir!));
+    assert.deepEqual({ stdout: r.stdout, status: r.status }, { stdout: `1\n${RUNTIME_ERRORS.bounds}\n`, status: 1 });
+  });
+});

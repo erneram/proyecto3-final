@@ -276,6 +276,38 @@ export class FunctionEmitter implements Emitter {
       case "alloc":
         this.allocate(4 * q.words, q.dst);
         return;
+      case "newarr": {
+        // Arreglo = palabra con la longitud seguida de los elementos.
+        const n = this.regs.read(q.length);
+        if (q.length.k === "int") this.ins("li", "$a0", 4 + 4 * q.length.value);
+        else {
+          this.ins("sll", "$a0", n, 2);
+          this.ins("addiu", "$a0", "$a0", 4);
+        }
+        this.ins("li", "$v0", 9);
+        this.ins("syscall");
+        this.ins("sw", n, "0($v0)");
+        this.ins("move", this.write(q.dst), "$v0");
+        return;
+      }
+      case "alen": {
+        const a = this.regs.read(q.array);
+        this.failIf("beqz", [a], "nullArray");
+        this.ins("lw", this.write(q.dst), `0(${a})`);
+        return;
+      }
+      case "aget": {
+        const address = this.element(q.array, q.index);
+        const d = this.write(q.dst);
+        this.ins(d.startsWith("$f") ? "lwc1" : "lw", d, address);
+        return;
+      }
+      case "aset": {
+        const v = this.regs.read(q.a);
+        const address = this.element(q.array, q.index);
+        this.ins(v.startsWith("$f") ? "swc1" : "sw", v, address);
+        return;
+      }
       case "try": {
         // El registro vive en este marco: cada activación de la función tiene el suyo.
         const at = this.#handlerRecords.get(q.handler)!;
@@ -326,6 +358,27 @@ export class FunctionEmitter implements Emitter {
   failIf(branch: string, operands: string[], error: RuntimeError): void {
     this.regs.flush("block");
     this.ins(branch, ...operands, this.data.routine(`error_${error}`));
+  }
+
+  /**
+   * Verifica que el arreglo no sea null y que el índice esté en rango, y devuelve
+   * la dirección del elemento. Comparar sin signo atrapa también los índices negativos.
+   */
+  element(array: Operand, index: Operand): string {
+    const a = this.regs.read(array);
+    this.failIf("beqz", [a], "nullArray");
+    this.ins("lw", "$t8", `0(${a})`);
+    if (index.k === "int" && index.value >= 0 && 4 + 4 * index.value <= 32767) {
+      this.ins("sltiu", "$t9", "$t8", index.value + 1);
+      this.failIf("bnez", ["$t9"], "bounds");
+      return `${4 + 4 * index.value}(${a})`;
+    }
+    const i = this.regs.read(index);
+    this.ins("sltu", "$t9", i, "$t8");
+    this.failIf("beqz", ["$t9"], "bounds");
+    this.ins("sll", "$t9", i, 2);
+    this.ins("addu", "$t9", "$t9", a);
+    return "4($t9)";
   }
 
   /** Reserva `bytes` en el heap (sbrk entrega memoria en ceros) y deja la dirección en `dst`. */
