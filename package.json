@@ -14,6 +14,8 @@
     "compis": "tsx src/cli.ts",
     "mars:setup": "tsx scripts/mars.ts setup",
     "mars": "tsx scripts/mars.ts run",
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
     "test": "node --import tsx --test \"test/**/*.test.ts\""
   },
   "devDependencies": {
