@@ -267,8 +267,9 @@ después de `j`/`jr` hasta la siguiente etiqueta.
   de Compiscript. Cada cambio se compila en un Web Worker 300 ms después de la
   última tecla, y las respuestas de versiones viejas se descartan. Si compila,
   el mismo worker ejecuta el programa con el intérprete del código intermedio
-  (`src/ir/interp.ts`), con un límite de un millón de pasos; un error en
-  ejecución sin capturar aparece en el panel de problemas. Los paneles
+  (`src/ir/interp.ts`), con un límite de un millón de pasos. La consola bajo
+  el editor muestra las últimas mil líneas impresas y el código de salida; un
+  error en ejecución sin capturar aparece también en el panel de problemas. Los paneles
   muestran problemas (también marcados en el editor), tokens, AST, ámbitos,
   símbolos, TAC, CFG y MIPS. Se puede descargar el `.asm` y cargar cualquier
   programa de `examples/` desde un panel lateral (⌘K).

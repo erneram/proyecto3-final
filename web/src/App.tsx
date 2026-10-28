@@ -1,6 +1,7 @@
 import { Download, FileCode } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { CodeEditor } from "@/CodeEditor";
+import { Console } from "@/Console";
 import { ProblemsPanel, runProblem } from "@/ProblemsPanel";
 import { Splitter } from "@/Splitter";
 import type { Example } from "@/examples";
@@ -34,7 +35,7 @@ const INITIAL_SOURCE = `function factorial(n: integer): integer {
 print(factorial(5));
 `;
 
-/** Marco de la IDE: cabecera, editor a la izquierda, resultados a la derecha y barra de estado. */
+/** Marco de la IDE: cabecera, editor y consola a la izquierda, resultados a la derecha y barra de estado. */
 export function App() {
   const [source, setSource] = useState(INITIAL_SOURCE);
   const [example, setExample] = useState<Example | null>(null);
@@ -102,9 +103,14 @@ export function App() {
         className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] lg:gap-0"
         style={{ "--left": `${split}fr`, "--right": `${100 - split}fr` } as CSSProperties}
       >
-        <HUDFrame label="Editor" className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
-          <CodeEditor value={source} onChange={setSource} diagnostics={diagnostics} />
-        </HUDFrame>
+        <div className="flex min-h-0 flex-col gap-6">
+          <HUDFrame label="Editor" className="flex min-h-0 flex-1 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
+            <CodeEditor value={source} onChange={setSource} diagnostics={diagnostics} />
+          </HUDFrame>
+          <HUDFrame label="Consola" className="flex h-64 shrink-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
+            <Console reply={reply} fileName={fileName} />
+          </HUDFrame>
+        </div>
         <Splitter value={split} onChange={setSplit} />
         <HUDFrame label="Resultados" className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
           <Tabs defaultValue="problems" className="min-h-0 flex-1">
