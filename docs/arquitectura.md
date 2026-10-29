@@ -1,9 +1,11 @@
 # Arquitectura del compilador de Compiscript
 
-El compilador traduce un programa Compiscript (`.cps`) a ensamblador MIPS32 que
-corre en MARS 4.5. Está escrito en TypeScript y se usa de tres formas: como
-biblioteca (`compile()` en `src/compile.ts`), desde la CLI (`src/cli.ts`) y desde
-la IDE web (`web/`), que ejecuta el mismo código dentro de un Web Worker.
+El compilador analiza Compiscript y genera código de tres direcciones para la
+fase 2. Está escrito en TypeScript y se usa como biblioteca en `src/compile.ts`,
+desde la CLI en `src/cli.ts` y desde la IDE web, que analiza el código dentro de
+un Web Worker. La biblioteca y la IDE se detienen en código intermedio por
+defecto. El backend MIPS32 y MARS 4.5 son herramientas adicionales de la CLI,
+activadas solo con los comandos `asm` y `run`.
 
 ```
 fuente .cps
@@ -21,6 +23,7 @@ AST verificado + CheckResult
   ▼
 IrModule (cuádruplos)
   │  src/ir/cfg.ts              bloques básicos y grafo de flujo
+  │  backend adicional, solo al solicitar ensamblador
   │  src/backend/isel.ts        selección de instrucciones por bloque
   │  src/backend/regs.ts        asignación de registros (getReg)
   │  src/backend/runtime.ts     rutinas de apoyo (cadenas, errores, excepciones)
@@ -31,18 +34,20 @@ ensamblador MIPS (.asm) → MARS 4.5
 
 ## Etapas y compuerta entre fases
 
-`compile(source, upTo)` corre las etapas `parse`, `check`, `ir` y `asm` en orden
-y se detiene en la primera que produzca errores (las advertencias no detienen):
+`compile(source, upTo)` corre las etapas solicitadas en orden y se detiene en la
+primera que produzca errores. Las advertencias no detienen la compilación.
+El valor por defecto de `upTo` es `ir`; `asm` requiere una petición explícita.
 
 | Etapa | Corre si | Si hay errores |
 |---|---|---|
 | léxico + sintáctico | siempre | no se revisa la semántica |
 | semántico | 0 errores léxicos y sintácticos | no se genera código intermedio |
-| código intermedio y MIPS | 0 errores semánticos | — |
+| código intermedio | 0 errores semánticos | — |
+| MIPS adicional | código intermedio válido y etapa `asm` solicitada | — |
 
 El resultado (`Compilation`) junta los tokens, todos los diagnósticos en orden de
-etapa, el AST, el resultado del chequeo, el `IrModule`, el ensamblador y, si la
-compilación se detuvo, la etapa y el motivo. La CLI y la IDE solo presentan ese
+etapa, el AST, el resultado del chequeo, el `IrModule`, el ensamblador solicitado
+y, si la compilación se detuvo, la etapa y el motivo. La CLI y la IDE presentan ese
 objeto; no repiten lógica del compilador.
 
 Cada diagnóstico (`src/diagnostic.ts`) tiene fase, severidad, línea y columna
@@ -117,7 +122,7 @@ globales y una lista de `IrFunction`. Cada función, método y función anidada 
 una `IrFunction` aparte con su etiqueta; el código global es `main`. El cuerpo es
 una lista de cuádruplos con operandos tipados:
 
-- temporales virtuales `t0, t1, …`, ilimitados y nuevos en cada uso;
+- temporales virtuales `t0, t1, …`, reciclados cuando sus valores ya no hacen falta;
 - slots (parámetros y locales en la pila de la función);
 - globales (segmento de datos);
 - constantes enteras (también `true`/`false` como 1/0 y `null` como 0),
@@ -147,6 +152,12 @@ etiqueta o después de un salto, un `return` o un `try`; un `try` tiene además
 una arista hacia su `catch`. `compis tac --cfg` imprime los bloques con sus
 predecesores y sucesores.
 
+`src/ir/recycle.ts` recicla temporales del mismo tipo cuando sus intervalos de
+uso no se superponen dentro de un bloque básico. Los valores compartidos entre
+bloques conservan identificadores exclusivos, igual que los argumentos
+pendientes de una llamada. Así se reduce la cantidad de temporales sin cambiar
+los valores que deben sobrevivir a saltos, ciclos o manejadores de errores.
+
 ### Dónde vive cada variable
 
 `src/ir/frames.ts` decide el lugar de cada símbolo:
@@ -169,6 +180,8 @@ una clausura son independientes.
 
 `src/ir/lower.ts` recorre el AST verificado:
 
+- **Orden de evaluación**: conserva el valor de los operandos, argumentos y
+  destinos antes de evaluar expresiones posteriores que puedan modificarlos.
 - **Condiciones** como código de saltos: `&&` y `||` evalúan el lado derecho
   solo si hace falta.
 - **Conversión integer → float** en asignaciones, argumentos, retornos, campos,
@@ -269,14 +282,11 @@ después de `j`/`jr` hasta la siguiente etiqueta.
 - **IDE** (`web/`): Vite, React 19 y Tailwind 4, con componentes de The GridCN
   y el tema Tron (primario `#00D4FF`). El editor es CodeMirror 6 con resaltado
   de Compiscript. Cada cambio se compila en un Web Worker 300 ms después de la
-  última tecla, y las respuestas de versiones viejas se descartan. Si compila,
-  el mismo worker ejecuta el programa con el intérprete del código intermedio
-  (`src/ir/interp.ts`), con un límite de un millón de pasos. La consola bajo
-  el editor muestra las últimas mil líneas impresas y el código de salida; un
-  error en ejecución sin capturar aparece también en el panel de problemas. Los paneles
-  muestran problemas (también marcados en el editor), tokens, AST, ámbitos,
-  símbolos, TAC, CFG y MIPS. Se puede abrir un `.cps` desde un archivo, descargar el `.asm` y cargar cualquier
-  programa de `examples/` desde un panel lateral (⌘K).
+  última tecla, y las respuestas de versiones viejas se descartan. El worker se
+  detiene en código intermedio: no genera MIPS ni ejecuta el programa. Los paneles
+  muestran problemas marcados también en el editor, tokens, AST, ámbitos,
+  símbolos, TAC y CFG. Se puede abrir un `.cps` desde un archivo y cargar cualquier
+  programa de `examples/` desde el panel lateral con `Ctrl+K`.
 
 ## Pruebas
 
@@ -284,7 +294,8 @@ después de `j`/`jr` hasta la siguiente etiqueta.
 
 - frontend, tipos, ámbitos, catálogo y checker con programas pequeños, más
   `examples/errors/{lexico,sintaxis,semantica,advertencias}/*` y `examples/lang/*`;
-- código intermedio: frames, traducción, CFG, y un intérprete del IR
+- código intermedio: frames, traducción, orden de evaluación, reciclaje de
+  temporales, CFG y un intérprete del IR
   (`src/ir/interp.ts`, con flotantes de 32 bits como MARS) que ejecuta
   programas y compara su salida;
 - backend: asignador, peephole y suites que ensamblan y ejecutan en MARS,

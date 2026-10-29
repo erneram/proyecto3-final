@@ -3,10 +3,19 @@ import { describe, it } from "node:test";
 import { compile } from "../src/compile.js";
 
 describe("compile", () => {
-  it("un programa válido atraviesa todas las etapas", () => {
+  it("un programa válido genera código intermedio sin MIPS por defecto", () => {
     const r = compile("let x: integer = 2; print(x * 3);");
     assert.equal(r.ok, true);
-    assert.ok(r.program && r.checked && r.ir && r.asm);
+    assert.ok(r.program && r.checked && r.ir);
+    assert.equal(r.asm, undefined);
+    assert.equal(r.stopped, undefined);
+  });
+
+  it("MIPS se genera solo al pedir la etapa asm", () => {
+    const r = compile("let x: integer = 2; print(x * 3);", "asm");
+    assert.equal(r.ok, true);
+    assert.ok(r.program && r.checked && r.ir);
+    assert.match(r.asm!, /^\.data\n/);
     assert.equal(r.stopped, undefined);
   });
 

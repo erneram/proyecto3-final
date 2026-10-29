@@ -2,7 +2,7 @@
   "name": "compiscript",
   "version": "1.0.0",
   "private": true,
-  "description": "Compilador de Compiscript a ensamblador MIPS32 ejecutable en MARS 4.5",
+  "description": "Análisis de Compiscript y generación de código intermedio para la fase 2",
   "type": "module",
   "engines": {
     "node": ">=22.12"

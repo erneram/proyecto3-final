@@ -86,19 +86,17 @@ export function SymbolsPanel({ symbols }: { symbols: SymbolRow[] }) {
   );
 }
 
-/** Salida de una etapa (TAC, CFG o MIPS) como terminal, sin efecto de máquina de escribir. */
 export function CodePanel({ title, code }: { title: string; code: string }) {
   const lines = useMemo(() => code.split("\n").map((text) => ({ text })), [code]);
   return <Terminal title={title} lines={lines} typewriter={false} bodyClassName="max-h-none whitespace-pre text-xs" />;
 }
 
-export function BackendStats({ stats }: { stats: NonNullable<CompileReply["stats"]> }) {
+export function IrStats({ stats }: { stats: NonNullable<CompileReply["stats"]> }) {
   return (
-    <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       <StatCard title="Funciones" value={String(stats.functions)} />
       <StatCard title="Cuádruplos" value={String(stats.quads)} />
       <StatCard title="Bloques básicos" value={String(stats.blocks)} />
-      <StatCard title="Líneas MIPS" value={String(stats.asmLines)} />
     </div>
   );
 }

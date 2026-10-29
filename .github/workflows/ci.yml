@@ -49,5 +49,8 @@ jobs:
       - name: Dependencias de la IDE
         run: npm ci --prefix web
 
+      - name: Pruebas de la IDE
+        run: npm --prefix web test
+
       - name: Compilar la IDE
         run: npm run build

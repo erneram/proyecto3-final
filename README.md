@@ -1,6 +1,6 @@
 # Compiscript
 
-Compilador de Compiscript escrito en TypeScript. Analiza el programa fuente, valida su semántica, genera código de tres direcciones y produce ensamblador MIPS32 que se ejecuta en MARS 4.5. Incluye una CLI y una IDE web con compilación en vivo.
+Compilador de Compiscript escrito en TypeScript. La fase 2 analiza el programa fuente, valida su semántica y genera código de tres direcciones con reciclaje de temporales. Incluye una CLI y una IDE web con análisis en vivo. La generación de MIPS32 y la ejecución en MARS 4.5 son herramientas adicionales de la CLI y solo corren al solicitarlas.
 
 ```
 function factorial(n: integer): integer {
@@ -22,8 +22,9 @@ El lenguaje tiene variables y constantes con tipos (`integer`, `float`, `string`
 
 ```bash
 npm install          # también genera el parser desde grammar/Compis.g4
-npm run mars:setup   # descarga Mars4_5.jar v4.5.1 a tools/ y verifica su sha256
 ```
+
+La fase 2 no necesita Java ni MARS. Para usar los comandos adicionales `asm` y `run`, la ejecución en MARS requiere Java y `npm run mars:setup`, que descarga y verifica `tools/Mars4_5.jar`.
 
 ## CLI
 
@@ -39,6 +40,8 @@ npm run compis -- <comando> <archivo.cps> [opciones]
 | `tac` | Muestra el código de tres direcciones; con `--cfg`, agrupado en bloques básicos |
 | `asm` | Genera ensamblador MIPS; con `-o salida.asm`, lo escribe en un archivo |
 | `run` | Compila y ejecuta el programa en MARS |
+
+Los comandos de análisis y `tac` no generan ensamblador ni ejecutan el programa. La biblioteca también se detiene en código intermedio por defecto: `compile(source)`. El ensamblador requiere `compile(source, "asm")`.
 
 ```bash
 npm run compis -- run examples/run/05-recursion.cps
@@ -64,7 +67,7 @@ npm run dev          # servidor de desarrollo de Vite
 npm run build        # compila la IDE en web/dist
 ```
 
-La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com/educlopez/thegridcn-ui) con el tema Tron (primario `#00D4FF`). El editor es CodeMirror 6 con resaltado de Compiscript. El programa se compila en un Web Worker mientras se escribe, y los errores aparecen subrayados en el editor y en el panel de problemas. Si compila, el worker lo ejecuta con el intérprete del código intermedio, que imprime lo mismo que MARS. La consola bajo el editor muestra la salida y el código de salida; un error en ejecución sin capturar (división entre cero, arreglo nulo…) también aparece en el panel de problemas. Los demás paneles muestran tokens, AST, ámbitos, tabla de símbolos, código de tres direcciones, bloques básicos y MIPS. El divisor entre editor y resultados se arrastra (o se mueve con las flechas) para cambiar sus anchos. `Abrir .cps` carga un programa desde un archivo, el botón `.asm` descarga el ensamblador, y `Ejemplos` (o `⌘K` / `Ctrl+K`) abre un panel lateral con los ejemplos agrupados por tipo y un filtro.
+La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com/educlopez/thegridcn-ui) con el tema Tron. El editor es CodeMirror 6 con resaltado de Compiscript. El programa se analiza en un Web Worker mientras se escribe, y los errores aparecen subrayados en el editor y en el panel de problemas. Los demás paneles muestran tokens, AST, ámbitos, tabla de símbolos, código de tres direcciones y bloques básicos. La IDE no genera ensamblador ni ejecuta el programa. El divisor entre editor y resultados se arrastra o se mueve con las flechas para cambiar sus anchos. `Abrir .cps` carga un programa desde un archivo, y `Ejemplos` o `Ctrl+K` abre un panel lateral con los ejemplos agrupados por tipo y un filtro.
 
 ## Ejemplos
 
@@ -86,6 +89,7 @@ La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com
 | `12-integral` | clases, arreglos, clausuras y excepciones juntos |
 | `13-error-sin-capturar` | un error sin `try` imprime su mensaje y termina con código 1 |
 | `14-flotantes` | conversión a float en llamadas, campos, arreglos, clausuras y retornos |
+| `15-orden-evaluacion` | operandos y argumentos con efectos laterales, destinos de arreglos y temporales reutilizables |
 
 `examples/errors/` contiene programas con errores, agrupados por fase. La primera línea de cada uno declara lo que debe reportar el compilador:
 
@@ -102,10 +106,11 @@ La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com
 ```bash
 npm run check                 # tipos de TypeScript
 npm test                      # todas las pruebas (node --test)
+npm --prefix web test         # configuración de la IDE
 REQUIRE_MARS=1 npm test       # falla si MARS no está disponible en vez de omitir
 ```
 
-Las pruebas cubren el lexer y el parser, el checker con los ejemplos de error, la traducción a código intermedio (con un intérprete del IR que compara salidas), el asignador de registros, el peephole y la ejecución en MARS. Las pruebas golden ejecutan cada `examples/run/*.cps` y `examples/errors/ejecucion/*.cps` en MARS y comparan su salida con el `.out`. Sin Java o sin el jar, las pruebas de MARS se omiten.
+Las pruebas cubren el lexer y el parser, el checker con los ejemplos de error, la traducción a código intermedio, el orden de evaluación y el reciclaje de temporales. El intérprete del IR compara salidas como herramienta de prueba, sin formar parte del flujo de la IDE. También se prueban el asignador de registros, el peephole y la ejecución adicional en MARS. Las pruebas golden comparan cada `examples/run/*.cps` y `examples/errors/ejecucion/*.cps` con su `.out`. Sin Java o sin el jar, las pruebas de MARS se omiten.
 
 La CI (`.github/workflows/ci.yml`) corre con Node 22 y Java 17. Descarga MARS, revisa los tipos, corre todas las pruebas con `REQUIRE_MARS=1` y compila la IDE.
 

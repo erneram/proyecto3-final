@@ -28,7 +28,7 @@ export interface Compilation {
 
 const hasErrors = (list: Diagnostic[]): boolean => list.some((d) => d.severity === "error");
 
-export function compile(source: string, upTo: Stage = STAGES[STAGES.length - 1]): Compilation {
+export function compile(source: string, upTo: Stage = "ir"): Compilation {
   const wants = (stage: Stage): boolean => STAGES.indexOf(stage) <= STAGES.indexOf(upTo);
   const parsed = parse(source);
   const result: Compilation = { tokens: parsed.tokens, diagnostics: [...parsed.diagnostics], ok: false };

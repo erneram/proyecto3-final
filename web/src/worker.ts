@@ -5,7 +5,6 @@ import type { Diagnostic } from "../../src/diagnostic.js";
 import { outline, type OutlineNode } from "../../src/frontend/outline.js";
 import type { TokenInfo } from "../../src/frontend/parse.js";
 import { buildCfg, printCfg } from "../../src/ir/cfg.js";
-import { runIr } from "../../src/ir/interp.js";
 import type { IrModule } from "../../src/ir/ir.js";
 import { printModule } from "../../src/ir/print.js";
 
@@ -25,26 +24,11 @@ export interface CompileReply {
   /** Ámbitos anidados con sus símbolos, si corrió el análisis semántico. */
   scopes?: OutlineNode;
   symbols?: SymbolRow[];
-  /** Código de tres direcciones, grafo de flujo y MIPS, si no hubo errores. */
   tac?: string;
   cfg?: string;
-  asm?: string;
-  stats?: { functions: number; quads: number; blocks: number; asmLines: number };
+  stats?: { functions: number; quads: number; blocks: number };
   /** Duración de la compilación en milisegundos. */
   ms: number;
-  /** Ejecución del programa con el intérprete del código intermedio, si compiló. */
-  run?: RunResult;
-}
-
-export interface RunResult {
-  /** Últimas líneas impresas; con un error sin capturar, la última es su mensaje. */
-  output: string[];
-  /** Líneas anteriores que no se envían a la IDE. */
-  omitted: number;
-  uncaught?: string;
-  timedOut?: boolean;
-  /** Fallo interno del intérprete. */
-  error?: string;
 }
 
 export interface SymbolRow {
@@ -93,46 +77,24 @@ const symbolRows = (table: SymbolTable): SymbolRow[] =>
     captured: s.captured,
   }));
 
-function backend(ir: IrModule, asm: string): Pick<CompileReply, "tac" | "cfg" | "asm" | "stats"> {
+function intermediate(ir: IrModule): Pick<CompileReply, "tac" | "cfg" | "stats"> {
   return {
     tac: printModule(ir),
     cfg: ir.functions.map((fn) => printCfg(fn, ir)).join("\n\n"),
-    asm,
     stats: {
       functions: ir.functions.length,
       quads: ir.functions.reduce((n, fn) => n + fn.body.filter((q) => q.op !== "label").length, 0),
       blocks: ir.functions.reduce((n, fn) => n + buildCfg(fn).length, 0),
-      asmLines: asm.split("\n").length,
     },
   };
 }
 
-/** Límite de cuádruplos ejecutados: un ciclo infinito se detiene en vez de colgar el worker. */
-const MAX_STEPS = 1_000_000;
-// ponytail: solo se envían las últimas líneas; paginar si hace falta ver toda la salida.
-const MAX_LINES = 1000;
-
-function execute(ir: IrModule): RunResult {
-  try {
-    const { output, uncaught, timedOut } = runIr(ir, MAX_STEPS);
-    return { output: output.slice(-MAX_LINES), omitted: Math.max(0, output.length - MAX_LINES), uncaught, timedOut };
-  } catch (err) {
-    return { output: [], omitted: 0, error: `Error interno del intérprete: ${err instanceof Error ? err.message : String(err)}` };
-  }
-}
-
-/**
- * Compila fuera del hilo de la interfaz y, si no hubo errores, ejecuta el programa.
- * Un fallo interno se reporta como diagnóstico, no tumba la IDE.
- */
 addEventListener("message", (e: MessageEvent<CompileRequest>) => {
   const { id, source } = e.data;
   const start = performance.now();
   let reply: CompileReply;
-  let ir: IrModule | undefined;
   try {
-    const c = compile(source);
-    ir = c.ir;
+    const c = compile(source, "ir");
     reply = {
       id,
       ok: c.ok,
@@ -142,7 +104,7 @@ addEventListener("message", (e: MessageEvent<CompileRequest>) => {
       ast: c.program && outline(c.program),
       scopes: c.checked && scopeTree(c.checked.table.root),
       symbols: c.checked && symbolRows(c.checked.table),
-      ...(c.ir && c.asm !== undefined && backend(c.ir, c.asm)),
+      ...(c.ir && intermediate(c.ir)),
       ms: 0,
     };
   } catch (err) {
@@ -150,6 +112,5 @@ addEventListener("message", (e: MessageEvent<CompileRequest>) => {
     reply = { id, ok: false, diagnostics: [{ phase: "backend", severity: "error", line: 1, column: 1, message }], tokens: [], ms: 0 };
   }
   reply.ms = performance.now() - start;
-  if (ir) reply.run = execute(ir);
   postMessage(reply);
 });
