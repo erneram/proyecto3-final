@@ -53,6 +53,8 @@ class Checker implements CheckResult {
   readonly members = new Map<Expr, Member>();
   #classIds = 0;
   #warnedUninitialized = new Set<Sym>();
+  /** Nombres no declarados ya reportados, por función (o código global): cada uno se reporta solo en su primer uso. */
+  #undeclared = new Map<Scope | undefined, Set<string>>();
   #fns: FnContext[] = [];
 
   report<K extends CodeKey>(key: K, pos: Pos, ...args: CodeArgs<K>): void {
@@ -419,7 +421,9 @@ class Checker implements CheckResult {
   use(e: Extract<Expr, { kind: "name" }>, scope: Scope, reading: boolean): Sym | undefined {
     const sym = scope.lookup(e.name);
     if (!sym) {
-      this.report("undeclared", e.pos, e.name);
+      const reported = this.#undeclared.get(scope.owner) ?? new Set<string>();
+      if (!reported.has(e.name)) this.report("undeclared", e.pos, e.name);
+      this.#undeclared.set(scope.owner, reported.add(e.name));
       return undefined;
     }
     sym.uses.push(e.pos);
@@ -433,6 +437,8 @@ class Checker implements CheckResult {
   }
 
   assign(e: Extract<Expr, { kind: "assign" }>, scope: Scope): Type {
+    // Un nombre destino se resuelve antes que el valor, para reportar en orden de lectura.
+    const sym = e.target.kind === "name" ? this.use(e.target, scope, false) : undefined;
     const value = this.expr(e.value, scope);
     if (e.target.kind !== "name") {
       const target = this.expr(e.target, scope);
@@ -444,7 +450,6 @@ class Checker implements CheckResult {
       } else if (!assignable(target, value)) this.report("badAssign", e.target.pos, typeName(target), typeName(value));
       return value;
     }
-    const sym = this.use(e.target, scope, false);
     if (!sym) return value;
     this.types.set(e.target, sym.type);
     if (!sym.mutable) {

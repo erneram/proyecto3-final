@@ -17,6 +17,9 @@ describe("checker: declaraciones y nombres", () => {
     assert.deepEqual(codes("print(nada);"), ["E101"]);
     assert.deepEqual(codes("{ let y = 1; } print(y);"), ["E101"]);
     assert.deepEqual(codes("let x = x;"), ["E101"]);
+    // Un nombre no declarado se reporta una vez por función, en su primer uso.
+    assert.deepEqual(codes("print(k); k = k + 1; print(k * 2);"), ["E101"]);
+    assert.deepEqual(codes("function f() { print(k); print(k); } function g() { print(k); }"), ["E101", "E101"]);
   });
 
   it("rechaza redeclarar en el mismo ámbito pero permite sombrear", () => {

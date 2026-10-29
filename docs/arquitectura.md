@@ -76,7 +76,8 @@ imprime como texto (`compis tree`) y la IDE muestra como árbol plegable.
   `void`, arreglos, funciones, instancias de clase, `unknown` y `error`) y la
   regla de asignabilidad: igualdad, `integer → float`, `null` hacia arreglos e
   instancias, arreglos covariantes y subclase hacia superclase. `unknown` y
-  `error` absorben: no generan errores en cascada.
+  `error` absorben: no generan errores en cascada. Un nombre no declarado se
+  reporta solo en su primer uso dentro de cada función (o del código global).
 - `scope.ts`: `Scope` (ámbitos anidados con su mapa de símbolos) y `SymbolTable`,
   que asigna ids deterministas a ámbitos y símbolos. Cada `Sym` registra sus usos
   y si está **capturado**, es decir, si lo usa una función distinta de la que lo
