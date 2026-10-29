@@ -271,7 +271,7 @@ después de `j`/`jr` hasta la siguiente etiqueta.
   el editor muestra las últimas mil líneas impresas y el código de salida; un
   error en ejecución sin capturar aparece también en el panel de problemas. Los paneles
   muestran problemas (también marcados en el editor), tokens, AST, ámbitos,
-  símbolos, TAC, CFG y MIPS. Se puede descargar el `.asm` y cargar cualquier
+  símbolos, TAC, CFG y MIPS. Se puede abrir un `.cps` desde un archivo, descargar el `.asm` y cargar cualquier
   programa de `examples/` desde un panel lateral (⌘K).
 
 ## Pruebas

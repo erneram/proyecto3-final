@@ -1,4 +1,4 @@
-import { Download, FileCode } from "lucide-react";
+import { Download, FileCode, FolderOpen } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { CodeEditor } from "@/CodeEditor";
 import { Console } from "@/Console";
@@ -39,10 +39,10 @@ print(factorial(5));
 export function App() {
   const [source, setSource] = useState(INITIAL_SOURCE);
   const [example, setExample] = useState<Example | null>(null);
+  const [fileName, setFileName] = useState("programa");
   const [navOpen, setNavOpen] = useState(false);
   const [split, setSplit] = useState(50);
   const lines = source.split("\n").length;
-  const fileName = example?.name ?? "programa";
   const { reply, busy } = useCompiler(source);
   const diagnostics = reply?.diagnostics ?? NO_DIAGNOSTICS;
   const errors = diagnostics.filter((d) => d.severity === "error").length;
@@ -73,6 +73,23 @@ export function App() {
           <h1 className="font-heading text-lg tracking-[0.3em] text-primary">Compiscript</h1>
         </div>
         <div className="flex items-center gap-2">
+          <label className={`${BUTTON} cursor-pointer focus-within:ring-1 focus-within:ring-primary`}>
+            <FolderOpen className="size-3.5" />
+            Abrir .cps
+            <input
+              type="file"
+              accept=".cps"
+              className="sr-only"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = ""; // permite volver a abrir el mismo archivo
+                if (!file) return;
+                setSource(await file.text());
+                setFileName(file.name.replace(/\.cps$/, ""));
+                setExample(null);
+              }}
+            />
+          </label>
           <button type="button" className={BUTTON} onClick={() => setNavOpen(true)}>
             <FileCode className="size-3.5" />
             Ejemplos
@@ -95,6 +112,7 @@ export function App() {
         current={example}
         onSelect={(e) => {
           setExample(e);
+          setFileName(e.name);
           setSource(e.source);
           setNavOpen(false);
         }}
