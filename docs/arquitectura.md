@@ -54,7 +54,10 @@ reporta como máximo 100 diagnósticos; el último avisa del recorte.
 **Gramática.** `grammar/Compis.g4` define el lenguaje. El parser se genera con
 `antlr-ng` (`npm run gen`, que también corre en `npm install`) dentro de
 `src/frontend/gen/`, que no se versiona. El runtime es `antlr4ng`, puro
-TypeScript, así que no hace falta Java para compilar.
+TypeScript, así que no hace falta Java para compilar. Como en los ejemplos del
+lenguaje (`if (n <= 1) return 1;`), cada rama de un `if` puede ser una sola
+sentencia sin llaves, lo que también permite `else if`; el AST la envuelve en un
+bloque. Los ciclos siguen exigiendo llaves.
 
 **Errores.** `src/frontend/errors.ts` reemplaza los listeners de ANTLR. Los
 mensajes nunca muestran el texto original en inglés: se traducen según el caso

@@ -50,7 +50,7 @@ describe("parser", () => {
   it("acepta un programa que recorre toda la sintaxis", () => {
     const { tree, diagnostics } = parse(readFileSync("examples/lang/sintaxis.cps", "utf8"));
     assert.deepEqual(diagnostics, []);
-    assert.equal(buildProgram(tree).body.length, 21);
+    assert.equal(buildProgram(tree).body.length, 22);
   });
 
   it("ubica un ';' faltante justo después del token anterior", () => {
@@ -63,15 +63,15 @@ describe("parser", () => {
   });
 
   it("redacta los mensajes en español", () => {
-    for (const src of ["let = 3;", "print(1", "x = ;", "class { }", "if (a) { } else if (b) { }"]) {
+    for (const src of ["let = 3;", "print(1", "x = ;", "class { }", "if (a) else { }"]) {
       const messages = parse(src).diagnostics.map((d) => d.message);
       assert.ok(messages.length > 0, src);
       for (const m of messages) assert.doesNotMatch(m, /missing|mismatched|extraneous|viable|expecting|recognition/, m);
     }
   });
 
-  it("exige bloques en el cuerpo de las sentencias de control", () => {
-    assert.ok(where("if (true) print(1);").length > 0);
+  it("un if acepta ramas sin llaves; los ciclos exigen bloques", () => {
+    assert.deepEqual(where("if (true) print(1); else if (false) print(2); else { print(3); }"), []);
     assert.ok(where("while (true) x = 1;").length > 0);
   });
 

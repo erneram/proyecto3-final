@@ -43,6 +43,7 @@ for (let i: integer = 0; i < LIMITE; i = i + 1) {
 }
 while (suma < 10 && activo) { suma = suma + matriz[1][0]; }
 do { suma = suma - 1; } while (!(suma <= 5) || false);
+if (suma > 100) print("grande"); else if (suma > 5) print("mediano"); else print("chico");
 foreach (t in tasas) { print(t); }
 switch (suma) {
   case 5: print("cinco");

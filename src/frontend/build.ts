@@ -36,7 +36,11 @@ function stmt(ctx: P.StmtContext): A.Stmt {
   if (ctx instanceof P.PrintStmtContext) return { kind: "print", value: expr(ctx.expr()), pos };
   if (ctx instanceof P.ExprStmtContext) return { kind: "expr", expr: expr(ctx.expr()), pos };
   if (ctx instanceof P.IfStmtContext) {
-    const [then, otherwise] = ctx.block().map(block);
+    // Sin llaves, cada rama es una sola sentencia y se envuelve en un bloque.
+    const [then, otherwise] = ctx.stmt().map((s): A.Block => {
+      const body = stmt(s);
+      return body.kind === "block" ? body : { kind: "block", body: [body], pos: body.pos };
+    });
     return { kind: "if", cond: expr(ctx.expr()), then, otherwise, pos };
   }
   if (ctx instanceof P.WhileStmtContext) {

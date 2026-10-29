@@ -30,6 +30,12 @@ describe("ejecución del código intermedio", () => {
       prints("let s = 0; for (let i = 0; i < 10; i = i + 1) { if (i % 2 == 0) { continue; } if (i > 7) { break; } s = s + i; } print(s);", "16");
     });
 
+    it("if sin llaves y else if", () => {
+      prints("function f(n: integer): integer { if (n <= 1) return 1; return n * f(n - 1); } print(f(5));", "120");
+      prints('let n = 7; if (n < 5) print("chico"); else if (n < 10) print("medio"); else print("grande");', "medio");
+      prints("foreach (n in [50, 70, 100, 80]) { if (n < 60) continue; if (n == 100) break; print(n); }", "70");
+    });
+
     it("do-while corre al menos una vez", () => {
       prints("let i = 10; do { print(i); i = i + 1; } while (i < 3);", "10");
     });

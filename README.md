@@ -11,7 +11,7 @@ function factorial(n: integer): integer {
 print(factorial(5));   // 120
 ```
 
-El lenguaje tiene variables y constantes con tipos (`integer`, `float`, `string`, `boolean`, arreglos y clases), funciones anidadas con clausuras, clases con herencia y despacho dinámico, `if`, `while`, `do-while`, `for`, `foreach`, `switch` y `try/catch`. Los errores en tiempo de ejecución (índice fuera de rango, arreglo o referencia nula, división entre cero) se pueden capturar. `examples/lang/sintaxis.cps` recorre toda la sintaxis.
+El lenguaje tiene variables y constantes con tipos (`integer`, `float`, `string`, `boolean`, arreglos y clases), funciones anidadas con clausuras, clases con herencia y despacho dinámico, `if` (con `else if` y ramas de una sola sentencia sin llaves), `while`, `do-while`, `for`, `foreach`, `switch` y `try/catch`. Los errores en tiempo de ejecución (índice fuera de rango, arreglo o referencia nula, división entre cero) se pueden capturar. `examples/lang/sintaxis.cps` recorre toda la sintaxis.
 
 ## Requisitos
 

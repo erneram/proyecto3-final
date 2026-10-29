@@ -11,7 +11,7 @@ stmt
     | classDecl                                                       # ClassStmt
     | PRINT LPAREN expr RPAREN SEMI                                   # PrintStmt
     | block                                                           # BlockStmt
-    | IF LPAREN expr RPAREN block (ELSE block)?                       # IfStmt
+    | IF LPAREN expr RPAREN stmt (ELSE stmt)?                         # IfStmt
     | WHILE LPAREN expr RPAREN block                                  # WhileStmt
     | DO block WHILE LPAREN expr RPAREN SEMI                          # DoWhileStmt
     | FOR LPAREN forInit? SEMI expr? SEMI expr? RPAREN block          # ForStmt
