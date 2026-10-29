@@ -4,6 +4,7 @@ import { findMember, isNumeric, UNKNOWN, VOID, type ClassInfo, type Member, type
 import type { BinaryOp as AstBinaryOp, ClassDecl, Expr, ExprOf, FuncDecl, Program, Stmt, StmtOf } from "../frontend/ast.js";
 import { hops, planStorage, type Frame, type Place, type StoragePlan } from "./frames.js";
 import type { BinaryOp, ClassLayout, IntOp, IrFunction, IrModule, Operand, PrintFormat, Quad, ValueClass } from "./ir.js";
+import { recycleTemps } from "./recycle.js";
 
 /** Traduce el AST ya verificado a código de tres direcciones. */
 export function lower(program: Program, checked: CheckResult): IrModule {
@@ -77,7 +78,7 @@ class ModuleBuilder {
   finish(f: FunctionLowerer): IrFunction {
     const last = f.quads.at(-1);
     if (last?.op !== "ret") f.emit({ op: "ret" });
-    const fn: IrFunction = {
+    const fn = recycleTemps({
       label: f.frame.label,
       name: f.frame.name,
       params: f.frame.params,
@@ -85,7 +86,7 @@ class ModuleBuilder {
       envParam: f.frame.envIn,
       temps: f.temps,
       body: f.quads,
-    };
+    });
     this.module.functions.push(fn);
     return fn;
   }
@@ -480,6 +481,27 @@ class FunctionLowerer {
     return this.convert(this.expr(e), this.typeOf(e), to);
   }
 
+  preserve(value: Operand, laterWrites: boolean): Operand {
+    if (!laterWrites || (value.k !== "slot" && value.k !== "global")) return value;
+    const storage = value.k === "slot" ? this.frame.slots : this.m.module.globals;
+    const dst = this.temp(storage[value.index]!.cls);
+    this.emit({ op: "mov", dst, a: value });
+    return dst;
+  }
+
+  before(e: Expr, later: Expr[]): Operand {
+    return this.preserve(this.expr(e), later.some(mayWrite));
+  }
+
+  callArgs(args: Expr[], params: Type[]): Operand[] {
+    let lastWrite = args.length - 1;
+    while (lastWrite >= 0 && !mayWrite(args[lastWrite]!)) lastWrite--;
+    return args.map((arg, i) => this.preserve(
+      this.coerced(arg, params[i] ?? this.typeOf(arg)),
+      i < lastWrite,
+    ));
+  }
+
   arrayLiteral(e: ExprOf<"array">, elem: Type): Operand {
     const dst = this.temp("word");
     this.emit({ op: "newarr", dst, length: { k: "int", value: e.items.length } });
@@ -544,7 +566,7 @@ class FunctionLowerer {
         return this.arrayLiteral(e, t.tag === "array" ? t.elem : UNKNOWN);
       }
       case "index": {
-        const array = this.expr(e.object);
+        const array = this.before(e.object, [e.index]);
         const index = this.expr(e.index);
         const dst = this.temp(classOfType(this.typeOf(e)));
         this.emit({ op: "aget", dst, array, index });
@@ -577,8 +599,8 @@ class FunctionLowerer {
     const type = sym?.kind === "function" ? sym.type : this.typeOf(e.callee);
     const params = type.tag === "fn" ? type.params : [];
     const ret = type.tag === "fn" ? type.ret : UNKNOWN;
-    const target = place?.at === "label" ? place.label : this.expr(e.callee);
-    const args = e.args.map((a, i) => this.coerced(a, params[i] ?? this.typeOf(a)));
+    const target = place?.at === "label" ? place.label : this.before(e.callee, e.args);
+    const args = this.callArgs(e.args, params);
     for (const a of args) this.emit({ op: "param", a });
     const dst = ret.tag === "void" ? undefined : this.temp(classOfType(ret));
     if (typeof target === "string") this.emit({ op: "call", dst, fn: target, argc: args.length });
@@ -608,7 +630,8 @@ class FunctionLowerer {
   invoke(object: Operand, cls: ClassInfo, member: Member, args: Expr[]): Operand {
     const params = member.type.tag === "fn" ? member.type.params : [];
     const ret = member.type.tag === "fn" ? member.type.ret : UNKNOWN;
-    const values = args.map((a, i) => this.coerced(a, params[i] ?? this.typeOf(a)));
+    object = this.preserve(object, args.some(mayWrite));
+    const values = this.callArgs(args, params);
     this.emit({ op: "param", a: object });
     for (const a of values) this.emit({ op: "param", a });
     const slot = this.m.layout(cls).vtable.findIndex((v) => v.name === member.name);
@@ -652,14 +675,14 @@ class FunctionLowerer {
 
   assign(e: ExprOf<"assign">): Operand {
     if (e.target.kind === "member") {
-      const object = this.expr(e.target.object);
+      const object = this.before(e.target.object, [e.value]);
       const value = this.coerced(e.value, this.memberOf(e.target).type);
       this.emit({ op: "setf", object, offset: this.fieldOffset(e.target), a: value });
       return value;
     }
     if (e.target.kind === "index") {
-      const array = this.expr(e.target.object);
-      const index = this.expr(e.target.index);
+      const array = this.before(e.target.object, [e.target.index, e.value]);
+      const index = this.before(e.target.index, [e.value]);
       const value = this.coerced(e.value, this.typeOf(e.target));
       this.emit({ op: "aset", array, index, a: value });
       return value;
@@ -683,7 +706,7 @@ class FunctionLowerer {
   }
 
   binary(e: ExprOf<"binary">): Operand {
-    const a = this.expr(e.left);
+    const a = this.before(e.left, [e.right]);
     return this.compute(e.op, a, this.typeOf(e.left), this.expr(e.right), this.typeOf(e.right));
   }
 
@@ -709,6 +732,29 @@ class FunctionLowerer {
     const dst = this.temp(float && !comparison ? "float" : "word");
     this.emit({ op, dst, a, b });
     return dst;
+  }
+}
+
+function mayWrite(e: Expr): boolean {
+  switch (e.kind) {
+    case "assign":
+    case "call":
+    case "new":
+      return true;
+    case "array":
+      return e.items.some(mayWrite);
+    case "member":
+      return mayWrite(e.object);
+    case "index":
+      return mayWrite(e.object) || mayWrite(e.index);
+    case "unary":
+      return mayWrite(e.operand);
+    case "binary":
+      return mayWrite(e.left) || mayWrite(e.right);
+    case "ternary":
+      return mayWrite(e.cond) || mayWrite(e.then) || mayWrite(e.otherwise);
+    default:
+      return false;
   }
 }
 

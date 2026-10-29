@@ -19,8 +19,8 @@ describe("generación: expresiones y asignaciones", () => {
       "t0 = @x * 3",
       "t1 = (float) t0",
       "@y = t1",
-      "t2 = @y +. 1.0",
-      "print.float t2",
+      "t1 = @y +. 1.0",
+      "print.float t1",
       "return",
     ]);
   });
@@ -29,9 +29,9 @@ describe("generación: expresiones y asignaciones", () => {
     assert.deepEqual(mainBody('let s = "a" + "b"; print(s != "ab");'), [
       't0 = "a" ++ "b"',
       "@s = t0",
-      't1 = @s ==s "ab"',
-      "t2 = !t1",
-      "print.bool t2",
+      't0 = @s ==s "ab"',
+      "t1 = !t0",
+      "print.bool t1",
       "return",
     ]);
   });
@@ -39,16 +39,16 @@ describe("generación: expresiones y asignaciones", () => {
   it("evalúa && y || en cortocircuito", () => {
     assert.deepEqual(mainBody("let a = true; print(a && !a || false);"), [
       "@a = 1",
-      "t1 = @a",
-      "ifnot t1 goto L1",
-      "t2 = !@a",
-      "t1 = t2",
-      "L1:",
+      "t0 = @a",
+      "ifnot t0 goto L1",
+      "t1 = !@a",
       "t0 = t1",
-      "if t0 goto L0",
-      "t0 = 0",
+      "L1:",
+      "t2 = t0",
+      "if t2 goto L0",
+      "t2 = 0",
       "L0:",
-      "print.bool t0",
+      "print.bool t2",
       "return",
     ]);
   });
@@ -106,12 +106,12 @@ describe("generación: control de flujo", () => {
       "L0:",
       "t0 = @i + 1",
       "@i = t0",
-      "t1 = @i == 2",
-      "ifnot t1 goto L2",
+      "t0 = @i == 2",
+      "ifnot t0 goto L2",
       "goto L0",
       "L2:",
-      "t2 = @i > 4",
-      "ifnot t2 goto L3",
+      "t1 = @i > 4",
+      "ifnot t1 goto L3",
       "goto L1",
       "L3:",
       "goto L0",
@@ -174,7 +174,7 @@ function fnBody(src: string, name: string): string[] {
 describe("generación: funciones y clausuras", () => {
   it("las funciones globales se llaman por etiqueta y la recursión también", () => {
     const src = "function fact(n: integer): integer { if (n <= 1) { return 1; } return n * fact(n - 1); } print(fact(5));";
-    assert.deepEqual(fnBody(src, "fact").slice(-5), ["t1 = n - 1", "param t1", "t2 = call f_fact, 1", "t3 = n * t2", "return t3"]);
+    assert.deepEqual(fnBody(src, "fact").slice(-6), ["t1 = n", "t2 = n - 1", "param t2", "t3 = call f_fact, 1", "t4 = t1 * t3", "return t4"]);
     assert.deepEqual(mainBody(src), ["param 5", "t0 = call f_fact, 1", "print.int t0", "return"]);
   });
 
@@ -201,32 +201,32 @@ describe("generación: funciones y clausuras", () => {
       "t0 = alloc 2",
       "t0[0] = 0",
       "$env = t0",
-      "t1 = closure f_contador_sig, $env",
-      "sig = t1",
+      "t0 = closure f_contador_sig, $env",
+      "sig = t0",
       "$env[4] = 0",
-      "t2 = callc sig, 0",
-      "t3 = callc sig, 0",
-      "return t3",
+      "t0 = callc sig, 0",
+      "t0 = callc sig, 0",
+      "return t0",
     ]);
     assert.deepEqual(fnBody(src, "contador.sig"), [
       "t0 = $env_in[4]",
       "t1 = t0 + 1",
       "$env_in[4] = t1",
-      "t2 = $env_in[4]",
-      "return t2",
+      "t0 = $env_in[4]",
+      "return t0",
     ]);
   });
 
   it("los parámetros capturados se copian al entorno y la función devuelta se llama como clausura", () => {
     const src = "function suma(x: integer) { function por(y: integer): integer { return x + y; } return por; } let g = suma(4); print(g(5));";
     assert.ok(fnBody(src, "suma").includes("t0[4] = x"));
-    assert.deepEqual(mainBody(src).slice(3, 6), ["param 5", "t1 = callc @g, 1", "print.int t1"]);
+    assert.deepEqual(mainBody(src).slice(3, 6), ["param 5", "t0 = callc @g, 1", "print.int t0"]);
   });
 
   it("una función anidada sin capturas propias reenvía el entorno recibido", () => {
     const src =
       "function afuera() { let n = 5; function a() { function b(): integer { return n; } return b(); } return a(); } print(afuera());";
-    assert.deepEqual(fnBody(src, "afuera.a"), ["t0 = closure f_afuera_a_b, $env_in", "b = t0", "t1 = callc b, 0", "return t1"]);
+    assert.deepEqual(fnBody(src, "afuera.a"), ["t0 = closure f_afuera_a_b, $env_in", "b = t0", "t0 = callc b, 0", "return t0"]);
   });
 });
 
@@ -246,10 +246,10 @@ describe("generación: arreglos", () => {
 
   it("en una asignación por índice se evalúa primero el destino y luego el valor", () => {
     assert.deepEqual(mainBody("let m = [[1, 2], [3]]; m[1][0] = m[0][1];").slice(9, 13), [
-      "t3 = @m{1}",
-      "t4 = @m{0}",
-      "t5 = t4{1}",
-      "t3{0} = t5",
+      "t0 = @m{1}",
+      "t1 = @m{0}",
+      "t2 = t1{1}",
+      "t0{0} = t2",
     ]);
   });
 
@@ -327,7 +327,7 @@ describe("generación: clases y objetos", () => {
   it("un objeto guarda el entorno donde se declaró su clase", () => {
     const src =
       "function f(): integer { let n = 1; class C { function inc(): integer { n = n + 1; return n; } } let c = new C(); return c.inc(); } print(f());";
-    assert.ok(fnBody(src, "f").includes("t1 = new v0_C, $env"));
+    assert.ok(fnBody(src, "f").includes("t0 = new v0_C, $env"));
     assert.deepEqual(fnBody(src, "f.C.inc").slice(0, 3), ["t0 = $env_in[4]", "t1 = t0 + 1", "$env_in[4] = t1"]);
   });
 });
@@ -368,9 +368,9 @@ describe("generación: literales de arreglo con tipo destino", () => {
       "t1 = newarray 1",
       "t1{0} = 1.0",
       "t0{0} = t1",
-      "t2 = newarray 1",
-      "t2{0} = 2.0",
-      "t0{1} = t2",
+      "t1 = newarray 1",
+      "t1{0} = 2.0",
+      "t0{1} = t1",
     ]);
   });
 });

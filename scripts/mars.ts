@@ -51,7 +51,7 @@ export function runMarsFile(path: string): MarsRun {
   if (r.error) throw r.error;
   const timedOut = STEP_LIMIT_NOTICE.test(r.stdout);
   // MARS agrega un salto de línea propio al terminar; no es salida del programa.
-  const stdout = timedOut ? r.stdout.replace(STEP_LIMIT_NOTICE, "") : r.stdout.replace(/\n$/, "");
+  const stdout = timedOut ? r.stdout.replace(STEP_LIMIT_NOTICE, "") : r.stdout.replace(/\r?\n$/, "");
   return { stdout, stderr: r.stderr, status: r.status ?? 1, timedOut };
 }
 

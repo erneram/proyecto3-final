@@ -21,9 +21,9 @@ const programs = DIRS.flatMap((dir) =>
 const skipMars = process.env.REQUIRE_MARS !== "1" && !marsAvailable() ? "MARS no disponible" : false;
 
 const load = (file: URL) => {
-  const result = compile(readFileSync(file, "utf8"));
+  const result = compile(readFileSync(file, "utf8"), "asm");
   assert.ok(result.ir && result.asm, JSON.stringify(result.diagnostics));
-  return { ...result, expected: readFileSync(new URL(file.href.replace(/\.cps$/, ".out")), "utf8") };
+  return { ...result, expected: readFileSync(new URL(file.href.replace(/\.cps$/, ".out")), "utf8").replace(/\r\n/g, "\n") };
 };
 
 describe("programas de ejemplo", () => {
