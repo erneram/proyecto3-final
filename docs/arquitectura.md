@@ -281,6 +281,12 @@ según el momento:
 
 Así un `catch` siempre encuentra en memoria los valores correctos.
 
+No se usan los registros `$s0–$s7`. Antes de cada llamada todos los valores
+vivos se guardan en memoria, y después de ella se vuelven a cargar, así que
+ningún valor tiene que sobrevivir en un registro a través de una llamada. Por
+eso no hacen falta registros preservados por el llamado, y el prólogo solo
+guarda `$ra` y `$fp`.
+
 ### Runtime
 
 `runtime.ts` contiene rutinas escritas a mano que solo usan `$a*`, `$v*`, `$t8` y
@@ -316,7 +322,7 @@ El reenvío vale igual para `swc1`/`lwc1` con `mov.s`, y la copia de vuelta
 también para `mov.s`. Por ejemplo, `return esImpar(n - 1);` en
 `examples/run/05-recursion.cps` deja el resultado en `$v0`, lo copia a `$t0` y
 lo vuelve a copiar a `$v0`; la segunda copia se borra porque `$v0` ya tiene ese
-valor. Sobre `examples/run/*.cps` el peephole quita 6 líneas de 3981, y el
+valor. Sobre `examples/run/*.cps` el peephole quita 6 líneas de 3991, y el
 reenvío cambia además cada carga de un parámetro recién guardado por una copia
 entre registros.
 

@@ -75,7 +75,7 @@ La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com
 
 | Ejemplo | Cubre |
 |---|---|
-| `01-aritmetica` | enteros, flotantes, promoción de integer a float |
+| `01-aritmetica` | enteros, flotantes, constantes, promoción de integer a float |
 | `02-cadenas` | concatenación, comparación, secuencias de escape |
 | `03-control` | `if/else`, `while`, `do-while`, `for`, `break`/`continue`, operadores lógicos |
 | `04-funciones` | tipos, argumentos promovidos, más de cuatro parámetros |
