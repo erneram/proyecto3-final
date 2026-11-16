@@ -24,7 +24,7 @@ function download(name: string, text: string): void {
   const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 const INITIAL_SOURCE = `function factorial(n: integer): integer {
