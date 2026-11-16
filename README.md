@@ -67,7 +67,7 @@ npm run dev          # servidor de desarrollo de Vite
 npm run build        # compila la IDE en web/dist
 ```
 
-La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com/educlopez/thegridcn-ui) con el tema Tron. El editor es CodeMirror 6 con resaltado de Compiscript. El programa se analiza en un Web Worker mientras se escribe, y los errores aparecen subrayados en el editor y en el panel de problemas. Los demás paneles muestran tokens, AST, ámbitos, tabla de símbolos, código de tres direcciones y bloques básicos. La IDE no genera ensamblador ni ejecuta el programa. El divisor entre editor y resultados se arrastra o se mueve con las flechas para cambiar sus anchos. `Abrir .cps` carga un programa desde un archivo, y `Ejemplos` o `Ctrl+K` abre un panel lateral con los ejemplos agrupados por tipo y un filtro.
+La IDE usa React 19, Tailwind 4 y componentes de [The GridCN](https://github.com/educlopez/thegridcn-ui) con el tema Tron. El editor es CodeMirror 6 con resaltado de Compiscript. El programa se analiza en un Web Worker mientras se escribe, y los errores aparecen subrayados en el editor y en el panel de problemas. Los demás paneles muestran tokens, AST, ámbitos, tabla de símbolos, código de tres direcciones, bloques básicos y el ensamblador MIPS, que se descarga como `.asm` con el botón de la cabecera. Si hay errores no se genera código. La IDE no ejecuta el programa; para eso se usa `npm run compis -- run`. El divisor entre editor y resultados se arrastra o se mueve con las flechas para cambiar sus anchos. `Abrir .cps` carga un programa desde un archivo, y `Ejemplos` o `Ctrl+K` abre un panel lateral con los ejemplos agrupados por tipo y un filtro.
 
 ## Ejemplos
 

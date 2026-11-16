@@ -282,10 +282,10 @@ después de `j`/`jr` hasta la siguiente etiqueta.
 - **IDE** (`web/`): Vite, React 19 y Tailwind 4, con componentes de The GridCN
   y el tema Tron (primario `#00D4FF`). El editor es CodeMirror 6 con resaltado
   de Compiscript. Cada cambio se compila en un Web Worker 300 ms después de la
-  última tecla, y las respuestas de versiones viejas se descartan. El worker se
-  detiene en código intermedio: no genera MIPS ni ejecuta el programa. Los paneles
+  última tecla, y las respuestas de versiones viejas se descartan. El worker compila
+  hasta MIPS con `compile(source, "asm")`, sin ejecutar el programa. Los paneles
   muestran problemas marcados también en el editor, tokens, AST, ámbitos,
-  símbolos, TAC y CFG. Se puede abrir un `.cps` desde un archivo y cargar cualquier
+  símbolos, TAC, CFG y MIPS, que se descarga como `.asm`. Se puede abrir un `.cps` desde un archivo y cargar cualquier
   programa de `examples/` desde el panel lateral con `Ctrl+K`.
 
 ## Pruebas

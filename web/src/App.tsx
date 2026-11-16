@@ -1,4 +1,4 @@
-import { FileCode, FolderOpen } from "lucide-react";
+import { Download, FileCode, FolderOpen } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { CodeEditor } from "@/CodeEditor";
 import { ProblemsPanel } from "@/ProblemsPanel";
@@ -15,9 +15,16 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const NO_DIAGNOSTICS: never[] = [];
-const NO_CODE = "Sin código: corrige los errores para generar TAC y CFG.";
+const NO_CODE = "Sin código: corrige los errores para generar TAC, CFG y MIPS.";
 const BUTTON =
   "inline-flex items-center gap-2 rounded border border-primary/40 px-3 py-1.5 font-mono text-xs uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40";
+
+function download(name: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const INITIAL_SOURCE = `function factorial(n: integer): integer {
   if (n <= 1) { return 1; }
@@ -83,6 +90,15 @@ export function App() {
             Ejemplos
             <kbd className="text-muted-foreground">⌘K</kbd>
           </button>
+          <button
+            type="button"
+            className={BUTTON}
+            disabled={!reply?.asm}
+            onClick={() => reply?.asm && download(`${fileName}.asm`, reply.asm)}
+          >
+            <Download className="size-3.5" />
+            {fileName}.asm
+          </button>
         </div>
       </header>
       <ExamplesNav
@@ -121,6 +137,7 @@ export function App() {
               <TabsTrigger value="symbols">Símbolos</TabsTrigger>
               <TabsTrigger value="tac">TAC</TabsTrigger>
               <TabsTrigger value="cfg">CFG</TabsTrigger>
+              <TabsTrigger value="mips">MIPS</TabsTrigger>
             </TabsList>
             <TabsContent value="problems" className="min-h-0 overflow-y-auto">
               <ProblemsPanel reply={reply} />
@@ -149,6 +166,9 @@ export function App() {
             </TabsContent>
             <TabsContent value="cfg" className="min-h-0 overflow-auto">
               {reply?.cfg ? <CodePanel title="Bloques básicos por función" code={reply.cfg} /> : <Empty>{NO_CODE}</Empty>}
+            </TabsContent>
+            <TabsContent value="mips" className="min-h-0 overflow-auto">
+              {reply?.asm ? <CodePanel title={`${fileName}.asm · MARS 4.5`} code={reply.asm} /> : <Empty>{NO_CODE}</Empty>}
             </TabsContent>
           </Tabs>
         </HUDFrame>

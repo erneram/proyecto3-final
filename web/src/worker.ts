@@ -26,6 +26,7 @@ export interface CompileReply {
   symbols?: SymbolRow[];
   tac?: string;
   cfg?: string;
+  asm?: string;
   stats?: { functions: number; quads: number; blocks: number };
   /** Duración de la compilación en milisegundos. */
   ms: number;
@@ -94,7 +95,7 @@ addEventListener("message", (e: MessageEvent<CompileRequest>) => {
   const start = performance.now();
   let reply: CompileReply;
   try {
-    const c = compile(source, "ir");
+    const c = compile(source, "asm");
     reply = {
       id,
       ok: c.ok,
@@ -105,6 +106,7 @@ addEventListener("message", (e: MessageEvent<CompileRequest>) => {
       scopes: c.checked && scopeTree(c.checked.table.root),
       symbols: c.checked && symbolRows(c.checked.table),
       ...(c.ir && intermediate(c.ir)),
+      asm: c.asm,
       ms: 0,
     };
   } catch (err) {
