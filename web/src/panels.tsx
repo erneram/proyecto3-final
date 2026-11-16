@@ -91,8 +91,8 @@ export function SymbolsPanel({ symbols }: { symbols: SymbolRow[] }) {
 }
 
 export function CodePanel({ title, code }: { title: ReactNode; code: string }) {
-  const lines = useMemo(() => code.split("\n").map((text) => ({ text })), [code]);
-  return <Terminal title={title} lines={lines} typewriter={false} className="shrink-0" bodyClassName="max-h-[60vh] overflow-auto whitespace-pre text-xs [&_span]:select-none" />;
+  const lines = useMemo(() => [{ text: code }], [code]);
+  return <Terminal title={title} lines={lines} typewriter={false} className="flex min-h-56 flex-1 flex-col" bodyClassName="max-h-none min-h-0 flex-1 overflow-auto whitespace-pre text-xs [&_span]:hidden" />;
 }
 
 export function IrStats({ stats }: { stats: NonNullable<CompileReply["stats"]> }) {

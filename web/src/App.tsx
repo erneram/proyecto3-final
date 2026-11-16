@@ -123,7 +123,7 @@ export function App() {
         <Splitter value={split} onChange={setSplit} />
         <HUDFrame label="Resultados" className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
           <Tabs defaultValue="problems" className="min-h-0 flex-1">
-            <TabsList className="h-auto w-full shrink-0 flex-wrap">
+            <TabsList className="h-auto w-full shrink-0 flex-wrap [&>button]:h-auto">
               <TabsTrigger value="problems">
                 Problemas
                 {problems > 0 && (
@@ -165,10 +165,10 @@ export function App() {
                 <Empty>{NO_CODE}</Empty>
               )}
             </TabsContent>
-            <TabsContent value="cfg" className="min-h-0 overflow-auto">
+            <TabsContent value="cfg" className="flex min-h-0 flex-col overflow-auto">
               {reply?.cfg ? <CodePanel title="Bloques básicos por función" code={reply.cfg} /> : <Empty>{NO_CODE}</Empty>}
             </TabsContent>
-            <TabsContent value="mips" className="min-h-0 overflow-auto">
+            <TabsContent value="mips" className="flex min-h-0 flex-col overflow-auto">
               {reply?.asm ? <CodePanel title={<><span className="normal-case">{fileName}.asm</span> · MARS 4.5</>} code={reply.asm} /> : <Empty>{NO_CODE}</Empty>}
             </TabsContent>
           </Tabs>
