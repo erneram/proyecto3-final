@@ -225,6 +225,42 @@ flotantes son de precisión simple y ocupan una palabra como cualquier valor.
 - `callm` lee la vtable de la palabra 0 del objeto y salta a la entrada del
   método: despacho dinámico.
 
+### Árbol de activación
+
+Cada llamada crea una activación con su propio marco en la pila. Con
+`factorial` de `examples/run/05-recursion.cps`, `print(factorial(3))` produce
+este árbol, que es una cadena porque cada activación hace una sola llamada:
+
+```
+main
+└── factorial(3)            devuelve 3 * 2 = 6
+    └── factorial(2)        devuelve 2 * 1 = 2
+        └── factorial(1)    caso base, devuelve 1
+```
+
+En `fibonacci` cada activación hace dos llamadas, así que el árbol se ramifica,
+pero en la pila solo están los marcos del camino desde `main` hasta la
+activación que corre. El marco de `factorial` mide 32 bytes: un slot para `n`,
+cinco lugares para temporales, el `$fp` anterior y `$ra`. Cuando corre
+`factorial(1)`, la pila tiene un marco por cada nodo del camino:
+
+```
+dirección alta
+  main            12 bytes   8: $ra             4: $fp anterior
+  factorial(3)    32 bytes   28: $ra → main     24: $fp de main
+                             8: n = 3, guardado antes de la llamada   0: n = 3
+  factorial(2)    32 bytes   28: $ra → factorial(3)   24: $fp de factorial(3)
+                             8: n = 2                                  0: n = 2
+  factorial(1)    32 bytes   28: $ra → factorial(2)   24: $fp de factorial(2)
+                             0: n = 1   ← $fp = $sp
+dirección baja
+```
+
+El prólogo baja `$sp` 32 bytes y guarda `$ra` y el `$fp` de quien llamó; el
+epílogo los restaura y sube `$sp`. Al volver, `factorial(2)` lee `n` de
+`8($fp)` y lo multiplica por `$v0`. Así, al terminar una activación su marco
+desaparece y la pila vuelve a ser la del padre en el árbol.
+
 ### Selección de instrucciones y registros
 
 `isel.ts` traduce cada bloque básico. `regs.ts` implementa el `getReg` del libro
