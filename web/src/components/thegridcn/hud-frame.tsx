@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 interface HUDFrameProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Clases del contenedor interno, para que el contenido herede la altura del marco. */
   bodyClassName?: string;
-  label?: string;
+  label?: React.ReactNode;
 }
 
 export function HUDFrame({

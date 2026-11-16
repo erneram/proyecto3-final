@@ -47,7 +47,7 @@ export function ProblemsPanel({ reply }: { reply: CompileReply | null }) {
         <Alert className="border-primary/60">
           <CircleCheck className="text-primary" />
           <AlertTitle className="text-primary">Compilación correcta</AlertTitle>
-          <AlertDescription>Se generaron TAC y CFG en {reply.ms.toFixed(0)} ms.</AlertDescription>
+          <AlertDescription>Se generaron TAC, CFG y MIPS en {reply.ms.toFixed(0)} ms.</AlertDescription>
         </Alert>
       )}
     </div>

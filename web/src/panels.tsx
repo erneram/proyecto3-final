@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { OutlineNode } from "../../src/frontend/outline.js";
 import type { TokenInfo } from "../../src/frontend/parse.js";
 import { DataTable } from "@/components/thegridcn/data-table";
@@ -90,7 +90,7 @@ export function SymbolsPanel({ symbols }: { symbols: SymbolRow[] }) {
   );
 }
 
-export function CodePanel({ title, code }: { title: string; code: string }) {
+export function CodePanel({ title, code }: { title: ReactNode; code: string }) {
   const lines = useMemo(() => code.split("\n").map((text) => ({ text })), [code]);
   return <Terminal title={title} lines={lines} typewriter={false} className="shrink-0" bodyClassName="max-h-[60vh] overflow-auto whitespace-pre text-xs [&_span]:select-none" />;
 }

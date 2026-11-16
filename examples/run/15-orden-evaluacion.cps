@@ -1,3 +1,4 @@
+// Orden de evaluación: operandos, argumentos y asignaciones encadenadas de izquierda a derecha.
 let x = 1;
 
 function incrementar(): integer {

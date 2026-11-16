@@ -8,11 +8,11 @@ interface TerminalLine {
   type?: "input" | "output" | "error" | "system";
 }
 
-interface TerminalProps extends React.HTMLAttributes<HTMLDivElement> {
+interface TerminalProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
   /** Extra classes for the scrolling line area (height, whitespace). */
   bodyClassName?: string;
   lines: TerminalLine[];
-  title?: string;
+  title?: React.ReactNode;
   typewriter?: boolean;
   variant?: "default" | "danger" | "locked";
 }

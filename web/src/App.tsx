@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const NO_DIAGNOSTICS: never[] = [];
 const NO_CODE = "Sin código: corrige los errores para generar TAC, CFG y MIPS.";
+const SHORTCUT = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K";
 const BUTTON =
   "inline-flex items-center gap-2 rounded border border-primary/40 px-3 py-1.5 font-mono text-xs uppercase tracking-widest text-primary transition-colors hover:bg-primary/10 disabled:pointer-events-none disabled:opacity-40";
 
@@ -46,7 +47,7 @@ export function App() {
   const errors = diagnostics.filter((d) => d.severity === "error").length;
   const warnings = diagnostics.length - errors;
   const problems = diagnostics.length;
-  const status = busy ? "Analizando…" : errors ? `${errors} errores` : "Sin errores";
+  const status = busy ? "Analizando…" : errors ? `${errors} ${errors === 1 ? "error" : "errores"}` : "Sin errores";
 
   useEffect(() => {
     const toggle = (e: KeyboardEvent) => {
@@ -88,7 +89,7 @@ export function App() {
           <button type="button" className={BUTTON} onClick={() => setNavOpen(true)}>
             <FileCode className="size-3.5" />
             Ejemplos
-            <kbd className="text-muted-foreground">⌘K</kbd>
+            <kbd className="text-muted-foreground">{SHORTCUT}</kbd>
           </button>
           <button
             type="button"
@@ -97,7 +98,7 @@ export function App() {
             onClick={() => reply?.asm && download(`${fileName}.asm`, reply.asm)}
           >
             <Download className="size-3.5" />
-            {fileName}.asm
+            <span className="normal-case">{fileName}.asm</span>
           </button>
         </div>
       </header>
@@ -116,7 +117,7 @@ export function App() {
         className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-6 pb-6 lg:grid-cols-[minmax(0,var(--left))_1.5rem_minmax(0,var(--right))] lg:gap-0"
         style={{ "--left": `${split}fr`, "--right": `${100 - split}fr` } as CSSProperties}
       >
-        <HUDFrame label={`${fileName}.cps`} className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
+        <HUDFrame label={<span className="normal-case">{fileName}.cps</span>} className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
           <CodeEditor value={source} onChange={setSource} diagnostics={diagnostics} />
         </HUDFrame>
         <Splitter value={split} onChange={setSplit} />
@@ -168,7 +169,7 @@ export function App() {
               {reply?.cfg ? <CodePanel title="Bloques básicos por función" code={reply.cfg} /> : <Empty>{NO_CODE}</Empty>}
             </TabsContent>
             <TabsContent value="mips" className="min-h-0 overflow-auto">
-              {reply?.asm ? <CodePanel title={`${fileName}.asm · MARS 4.5`} code={reply.asm} /> : <Empty>{NO_CODE}</Empty>}
+              {reply?.asm ? <CodePanel title={<><span className="normal-case">{fileName}.asm</span> · MARS 4.5</>} code={reply.asm} /> : <Empty>{NO_CODE}</Empty>}
             </TabsContent>
           </Tabs>
         </HUDFrame>
@@ -177,7 +178,7 @@ export function App() {
         leftContent={
           <>
             <span className={errors && !busy ? "text-destructive" : undefined}>{status}</span>
-            {warnings > 0 && <span>{warnings} advertencias</span>}
+            {warnings > 0 && <span>{warnings} {warnings === 1 ? "advertencia" : "advertencias"}</span>}
           </>
         }
         rightContent={
