@@ -104,6 +104,12 @@ function pass(lines: string[]): string[] {
       continue;
     }
 
+    if ((i.op === "move" || i.op === "mov.s") && next?.op === i.op && next.args[0] === i.args[1] && next.args[1] === i.args[0]) {
+      out.push(format(i));
+      k++;
+      continue;
+    }
+
     out.push(format(i));
     if (UNCONDITIONAL.has(i.op)) dead = true;
   }

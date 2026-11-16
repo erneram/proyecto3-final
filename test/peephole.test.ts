@@ -39,6 +39,12 @@ describe("mirilla", () => {
     assert.deepEqual(opt(...code), code);
   });
 
+  it("quita la copia de vuelta al registro de origen", () => {
+    assert.deepEqual(opt("move $t0, $v0", "move $v0, $t0", "mov.s $f2, $f0", "mov.s $f0, $f2", "jr $ra"), ["move $t0, $v0", "mov.s $f2, $f0", "jr $ra"]);
+    const code = ["move $t0, $v0", "L0:", "move $v0, $t0", "move $t1, $v0", "move $v0, $t2"];
+    assert.deepEqual(opt(...code), code);
+  });
+
   it("borra lo inalcanzable después de un salto incondicional", () => {
     assert.deepEqual(opt("j L0", "li $t0, 1", "addu $t0, $t0, $t0", "L1:", "jr $ra", "li $v0, 1", "L0:", "jr $ra"), ["j L0", "L1:", "jr $ra", "L0:", "jr $ra"]);
   });

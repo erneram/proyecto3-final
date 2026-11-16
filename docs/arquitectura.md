@@ -265,10 +265,24 @@ capturar también desde una función llamada dentro del `try`.
 ### Peephole
 
 `peephole.ts` reescribe el texto ensamblador hasta que ninguna regla cambie
-nada. Elimina `move` de un registro a sí mismo y saltos a la línea siguiente.
-Encadena saltos hacia saltos. Reemplaza un `lw` que lee lo que un `sw` acaba de
-guardar por una copia (lo mismo con `swc1`/`lwc1`). Borra el código inalcanzable
-después de `j`/`jr` hasta la siguiente etiqueta.
+nada. Las reglas miran instrucciones seguidas y nunca cruzan una etiqueta:
+
+| Regla | Antes | Después |
+|---|---|---|
+| copia a sí mismo | `move $t0, $t0` | se borra |
+| salto a la línea siguiente | `j L0` / `L0:` | `L0:` |
+| saltos encadenados | `beqz $t0, A` … `A:` / `j B` | `beqz $t0, B` |
+| reenvío de lo guardado | `sw $a0, 0($fp)` / `lw $t0, 0($fp)` | `sw $a0, 0($fp)` / `move $t0, $a0` |
+| copia de vuelta | `move $t0, $v0` / `move $v0, $t0` | `move $t0, $v0` |
+| código inalcanzable | `jr $ra` / `li $v0, 1` / `L1:` | `jr $ra` / `L1:` |
+
+El reenvío vale igual para `swc1`/`lwc1` con `mov.s`, y la copia de vuelta
+también para `mov.s`. Por ejemplo, `return esImpar(n - 1);` en
+`examples/run/05-recursion.cps` deja el resultado en `$v0`, lo copia a `$t0` y
+lo vuelve a copiar a `$v0`; la segunda copia se borra porque `$v0` ya tiene ese
+valor. Sobre `examples/run/*.cps` el peephole quita 6 líneas de 3981, y el
+reenvío cambia además cada carga de un parámetro recién guardado por una copia
+entre registros.
 
 ## Herramientas
 
