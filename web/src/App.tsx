@@ -62,12 +62,12 @@ export function App() {
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <UplinkHeader leftText="COMPISCRIPT // IDE" rightText="FASE 3 · MIPS32 · MARS 4.5" />
-      <header className="flex items-center justify-between gap-4 px-6 py-4">
+      <header className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
         <div className="flex items-center gap-3">
           <AgentAvatar seed="compiscript" size={36} hue={190} aria-hidden />
           <h1 className="font-heading text-lg tracking-[0.3em] text-primary">Compiscript</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label className={`${BUTTON} cursor-pointer focus-within:ring-1 focus-within:ring-primary`}>
             <FolderOpen className="size-3.5" />
             Abrir .cps
@@ -122,7 +122,7 @@ export function App() {
         <Splitter value={split} onChange={setSplit} />
         <HUDFrame label="Resultados" className="flex min-h-0 flex-col" bodyClassName="flex min-h-0 flex-1 flex-col">
           <Tabs defaultValue="problems" className="min-h-0 flex-1">
-            <TabsList className="h-auto w-full flex-wrap">
+            <TabsList className="h-auto w-full shrink-0 flex-wrap">
               <TabsTrigger value="problems">
                 Problemas
                 {problems > 0 && (

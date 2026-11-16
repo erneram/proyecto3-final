@@ -7,6 +7,8 @@ import { Terminal } from "@/components/thegridcn/terminal";
 import { Badge } from "@/components/ui/badge";
 import type { CompileReply, SymbolRow } from "@/worker";
 
+const TABLE = "flex max-h-full flex-col [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card";
+
 export function Empty({ children }: { children: string }) {
   return <p className="font-mono text-sm text-muted-foreground">{children}</p>;
 }
@@ -15,6 +17,7 @@ export function TokensPanel({ tokens }: { tokens: TokenInfo[] }) {
   const rows = tokens.map((t, i) => ({ n: i + 1, line: t.line, column: t.column, kind: t.kind, text: t.text }));
   return (
     <DataTable
+      className={TABLE}
       label={`${tokens.length} tokens`}
       data={rows}
       columns={[
@@ -70,6 +73,7 @@ export function SymbolsPanel({ symbols }: { symbols: SymbolRow[] }) {
   const captured = symbols.filter((s) => s.captured).length;
   return (
     <DataTable
+      className={TABLE}
       label={`${symbols.length} símbolos · ${captured} capturados`}
       data={symbols.map((s) => ({ ...s }))}
       columns={[
@@ -88,7 +92,7 @@ export function SymbolsPanel({ symbols }: { symbols: SymbolRow[] }) {
 
 export function CodePanel({ title, code }: { title: string; code: string }) {
   const lines = useMemo(() => code.split("\n").map((text) => ({ text })), [code]);
-  return <Terminal title={title} lines={lines} typewriter={false} bodyClassName="max-h-none whitespace-pre text-xs" />;
+  return <Terminal title={title} lines={lines} typewriter={false} className="shrink-0" bodyClassName="max-h-[60vh] overflow-auto whitespace-pre text-xs [&_span]:select-none" />;
 }
 
 export function IrStats({ stats }: { stats: NonNullable<CompileReply["stats"]> }) {
