@@ -1,6 +1,6 @@
 # Compiscript
 
-Compilador de Compiscript escrito en TypeScript. La fase 2 analiza el programa fuente, valida su semántica y genera código de tres direcciones con reciclaje de temporales. Incluye una CLI y una IDE web con análisis en vivo. La generación de MIPS32 y la ejecución en MARS 4.5 son herramientas adicionales de la CLI y solo corren al solicitarlas.
+Compilador de Compiscript escrito en TypeScript. La fase 3 traduce el programa fuente a ensamblador MIPS32 que corre en MARS 4.5: analiza el programa, valida su semántica, genera código de tres direcciones con reciclaje de temporales y de ahí produce MIPS con asignación de registros y optimización de mirilla. Incluye una CLI y una IDE web que compila mientras se escribe.
 
 ```
 function factorial(n: integer): integer {
@@ -24,7 +24,7 @@ El lenguaje tiene variables y constantes con tipos (`integer`, `float`, `string`
 npm install          # también genera el parser desde grammar/Compis.g4
 ```
 
-La fase 2 no necesita Java ni MARS. Para usar los comandos adicionales `asm` y `run`, la ejecución en MARS requiere Java y `npm run mars:setup`, que descarga y verifica `tools/Mars4_5.jar`.
+Generar el ensamblador no necesita Java. Ejecutarlo en MARS con `run` requiere Java y `npm run mars:setup`, que descarga y verifica `tools/Mars4_5.jar`.
 
 ## CLI
 
@@ -41,7 +41,7 @@ npm run compis -- <comando> <archivo.cps> [opciones]
 | `asm` | Genera ensamblador MIPS; con `-o salida.asm`, lo escribe en un archivo |
 | `run` | Compila y ejecuta el programa en MARS |
 
-Los comandos de análisis y `tac` no generan ensamblador ni ejecutan el programa. La biblioteca también se detiene en código intermedio por defecto: `compile(source)`. El ensamblador requiere `compile(source, "asm")`.
+`asm` y `run` producen el entregable de la fase 3; los comandos de análisis y `tac` muestran las etapas anteriores. En la biblioteca, `compile(source, "asm")` llega hasta MIPS; sin etapa, `compile(source)` se detiene en código intermedio.
 
 ```bash
 npm run compis -- run examples/run/05-recursion.cps
@@ -110,7 +110,7 @@ npm --prefix web test         # configuración de la IDE
 REQUIRE_MARS=1 npm test       # falla si MARS no está disponible en vez de omitir
 ```
 
-Las pruebas cubren el lexer y el parser, el checker con los ejemplos de error, la traducción a código intermedio, el orden de evaluación y el reciclaje de temporales. El intérprete del IR compara salidas como herramienta de prueba, sin formar parte del flujo de la IDE. También se prueban el asignador de registros, el peephole y la ejecución adicional en MARS. Las pruebas golden comparan cada `examples/run/*.cps` y `examples/errors/ejecucion/*.cps` con su `.out`. Sin Java o sin el jar, las pruebas de MARS se omiten.
+Las pruebas cubren el lexer y el parser, el checker con los ejemplos de error, la traducción a código intermedio, el orden de evaluación y el reciclaje de temporales. El intérprete del IR compara salidas como herramienta de prueba, sin formar parte del flujo de la IDE. También se prueban el asignador de registros, el peephole y la ejecución en MARS. Las pruebas golden comparan cada `examples/run/*.cps` y `examples/errors/ejecucion/*.cps` con su `.out`. Sin Java o sin el jar, las pruebas de MARS se omiten.
 
 La CI (`.github/workflows/ci.yml`) corre con Node 22 y Java 17. Descarga MARS, revisa los tipos, corre todas las pruebas con `REQUIRE_MARS=1` y compila la IDE.
 

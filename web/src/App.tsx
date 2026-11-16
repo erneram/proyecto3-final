@@ -61,7 +61,7 @@ export function App() {
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
-      <UplinkHeader leftText="COMPISCRIPT // IDE" rightText="FASE 2 · TAC / CFG" />
+      <UplinkHeader leftText="COMPISCRIPT // IDE" rightText="FASE 3 · MIPS32 · MARS 4.5" />
       <header className="flex items-center justify-between gap-4 px-6 py-4">
         <div className="flex items-center gap-3">
           <AgentAvatar seed="compiscript" size={36} hue={190} aria-hidden />
@@ -183,7 +183,7 @@ export function App() {
         rightContent={
           <>
             <span>{lines} líneas</span>
-            <span className="text-primary">Fase 2 · código intermedio</span>
+            <span className="text-primary">Fase 3 · generación de MIPS</span>
           </>
         }
       />

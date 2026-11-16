@@ -1,11 +1,10 @@
 # Arquitectura del compilador de Compiscript
 
-El compilador analiza Compiscript y genera código de tres direcciones para la
-fase 2. Está escrito en TypeScript y se usa como biblioteca en `src/compile.ts`,
-desde la CLI en `src/cli.ts` y desde la IDE web, que analiza el código dentro de
-un Web Worker. La biblioteca y la IDE se detienen en código intermedio por
-defecto. El backend MIPS32 y MARS 4.5 son herramientas adicionales de la CLI,
-activadas solo con los comandos `asm` y `run`.
+El compilador traduce Compiscript a ensamblador MIPS32 para MARS 4.5, el
+entregable de la fase 3. Pasa por código de tres direcciones y de ahí genera
+MIPS. Está escrito en TypeScript y se usa como biblioteca en `src/compile.ts`,
+desde la CLI en `src/cli.ts` (`asm` y `run`) y desde la IDE web, que compila
+hasta MIPS dentro de un Web Worker.
 
 ```
 fuente .cps
@@ -23,7 +22,7 @@ AST verificado + CheckResult
   ▼
 IrModule (cuádruplos)
   │  src/ir/cfg.ts              bloques básicos y grafo de flujo
-  │  backend adicional, solo al solicitar ensamblador
+  │  backend MIPS32
   │  src/backend/isel.ts        selección de instrucciones por bloque
   │  src/backend/regs.ts        asignación de registros (getReg)
   │  src/backend/runtime.ts     rutinas de apoyo (cadenas, errores, excepciones)
@@ -36,14 +35,14 @@ ensamblador MIPS (.asm) → MARS 4.5
 
 `compile(source, upTo)` corre las etapas solicitadas en orden y se detiene en la
 primera que produzca errores. Las advertencias no detienen la compilación.
-El valor por defecto de `upTo` es `ir`; `asm` requiere una petición explícita.
+El valor por defecto de `upTo` es `ir`; la CLI (`asm`, `run`) y la IDE piden `asm`.
 
 | Etapa | Corre si | Si hay errores |
 |---|---|---|
 | léxico + sintáctico | siempre | no se revisa la semántica |
 | semántico | 0 errores léxicos y sintácticos | no se genera código intermedio |
 | código intermedio | 0 errores semánticos | — |
-| MIPS adicional | código intermedio válido y etapa `asm` solicitada | — |
+| MIPS | código intermedio válido y etapa `asm` solicitada | — |
 
 El resultado (`Compilation`) junta los tokens, todos los diagnósticos en orden de
 etapa, el AST, el resultado del chequeo, el `IrModule`, el ensamblador solicitado
