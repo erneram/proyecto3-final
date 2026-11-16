@@ -316,15 +316,18 @@ nada. Las reglas miran instrucciones seguidas y nunca cruzan una etiqueta:
 | saltos encadenados | `beqz $t0, A` … `A:` / `j B` | `beqz $t0, B` |
 | reenvío de lo guardado | `sw $a0, 0($fp)` / `lw $t0, 0($fp)` | `sw $a0, 0($fp)` / `move $t0, $a0` |
 | copia de vuelta | `move $t0, $v0` / `move $v0, $t0` | `move $t0, $v0` |
+| propagación de copias | `move $t0, $v0` / `move $a0, $t0` | `move $t0, $v0` / `move $a0, $v0` |
 | código inalcanzable | `jr $ra` / `li $v0, 1` / `L1:` | `jr $ra` / `L1:` |
 
-El reenvío vale igual para `swc1`/`lwc1` con `mov.s`, y la copia de vuelta
-también para `mov.s`. Por ejemplo, `return esImpar(n - 1);` en
+El reenvío vale igual para `swc1`/`lwc1` con `mov.s`, y la copia de vuelta y
+la propagación también para `mov.s`. Por ejemplo, `return esImpar(n - 1);` en
 `examples/run/05-recursion.cps` deja el resultado en `$v0`, lo copia a `$t0` y
 lo vuelve a copiar a `$v0`; la segunda copia se borra porque `$v0` ya tiene ese
 valor. Sobre `examples/run/*.cps` el peephole quita 6 líneas de 3991, y el
 reenvío cambia además cada carga de un parámetro recién guardado por una copia
-entre registros.
+entre registros. La propagación hace que una copia lea del registro original,
+como el resultado de una llamada en `$v0` que pasa a `$a0` para imprimirse, así
+la copia intermedia ya no queda en el camino del valor.
 
 ## Herramientas
 

@@ -41,7 +41,12 @@ describe("mirilla", () => {
 
   it("quita la copia de vuelta al registro de origen", () => {
     assert.deepEqual(opt("move $t0, $v0", "move $v0, $t0", "mov.s $f2, $f0", "mov.s $f0, $f2", "jr $ra"), ["move $t0, $v0", "mov.s $f2, $f0", "jr $ra"]);
-    const code = ["move $t0, $v0", "L0:", "move $v0, $t0", "move $t1, $v0", "move $v0, $t2"];
+    assert.deepEqual(opt("move $t0, $v0", "L0:", "move $v0, $t0", "move $t1, $v0", "move $v0, $t2"), ["move $t0, $v0", "L0:", "move $v0, $t0", "move $t1, $t0", "move $v0, $t2"]);
+  });
+
+  it("propaga la copia al registro de origen", () => {
+    assert.deepEqual(opt("move $t0, $v0", "move $a0, $t0", "mov.s $f2, $f0", "mov.s $f12, $f2"), ["move $t0, $v0", "move $a0, $v0", "mov.s $f2, $f0", "mov.s $f12, $f0"]);
+    const code = ["move $t0, $v0", "L0:", "move $a0, $t0"];
     assert.deepEqual(opt(...code), code);
   });
 
