@@ -7,7 +7,7 @@ import { Terminal } from "@/components/thegridcn/terminal";
 import { Badge } from "@/components/ui/badge";
 import type { CompileReply, SymbolRow } from "@/worker";
 
-const TABLE = "flex max-h-full flex-col [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card";
+const TABLE = "flex max-h-full flex-col [&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-card [&_th]:text-foreground/70";
 
 export function Empty({ children }: { children: string }) {
   return <p className="font-mono text-sm text-muted-foreground">{children}</p>;

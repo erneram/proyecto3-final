@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { basicSetup } from "codemirror";
 import { lintGutter, setDiagnostics, type Diagnostic as Marker } from "@codemirror/lint";
 import type { Text } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { indentWithTab } from "@codemirror/commands";
+import { EditorView, keymap } from "@codemirror/view";
 import type { Diagnostic } from "../../src/diagnostic.js";
 import { compiscript, tronTheme } from "@/editor";
 
@@ -34,6 +35,7 @@ export function CodeEditor({ value, onChange, diagnostics }: Props) {
       doc: value,
       extensions: [
         basicSetup,
+        keymap.of([indentWithTab]),
         compiscript,
         lintGutter(),
         tronTheme,

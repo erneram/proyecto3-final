@@ -79,7 +79,7 @@ const tron = HighlightStyle.define([
   { tag: t.function(t.definition(t.variableName)), color: "#e6f7ff", fontWeight: "600" },
   { tag: [t.number, t.bool, t.null, t.self], color: "#ffb347" },
   { tag: t.string, color: "#9cf2c8" },
-  { tag: [t.lineComment, t.blockComment], color: "#4f6b80", fontStyle: "italic" },
+  { tag: [t.lineComment, t.blockComment], color: "#6383a0", fontStyle: "italic" },
   { tag: t.operator, color: "#5fb8d6" },
   { tag: t.punctuation, color: "#6f8899" },
   { tag: t.invalid, color: "#ff4d6d", textDecoration: "underline wavy" },
